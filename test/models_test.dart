@@ -55,24 +55,49 @@ void main() {
   });
 
   group('tray toggle target', () {
-    test('uses configured binary mode', () {
+    test('cycles desired policies regardless of native configuration', () {
+      expect(trayToggleTarget(BluetoothAudioMode.a2dp), BluetoothAudioMode.hfp);
       expect(
-        trayToggleTarget(BluetoothAudioMode.hfp, BluetoothAudioMode.hfp),
-        BluetoothAudioMode.a2dp,
+        trayToggleTarget(BluetoothAudioMode.hfp),
+        BluetoothAudioMode.automatic,
       );
       expect(
-        trayToggleTarget(BluetoothAudioMode.a2dp, BluetoothAudioMode.a2dp),
-        BluetoothAudioMode.hfp,
+        trayToggleTarget(BluetoothAudioMode.automatic),
+        BluetoothAudioMode.a2dp,
       );
     });
+  });
 
-    test('uses desired mode for mixed and offline states', () {
+  group('automatic mode', () {
+    const ready = BluetoothAudioStatus(
+      mode: BluetoothAudioMode.hfp,
+      connected: true,
+      microphoneEnabled: true,
+      hfpActive: false,
+      a2dpIsDefault: true,
+      hfpRenderIsDefault: false,
+      hfpCaptureIsDefault: true,
+    );
+
+    test('accepts the HFP-ready unified endpoint configuration', () {
+      expect(ready.isCompatibleWith(BluetoothAudioMode.automatic), isTrue);
+    });
+
+    test('reports A2DP while idle and HFP while capture is active', () {
       expect(
-        trayToggleTarget(BluetoothAudioMode.mixed, BluetoothAudioMode.hfp),
+        ready.effectiveMode(BluetoothAudioMode.automatic),
         BluetoothAudioMode.a2dp,
       );
+      final active = BluetoothAudioStatus.fromMap(<Object?, Object?>{
+        'mode': 'hfp',
+        'connected': true,
+        'microphoneEnabled': true,
+        'hfpActive': true,
+        'a2dpIsDefault': true,
+        'hfpCaptureIsDefault': true,
+      });
       expect(
-        trayToggleTarget(BluetoothAudioMode.offline, BluetoothAudioMode.a2dp),
+        active.effectiveMode(BluetoothAudioMode.automatic),
         BluetoothAudioMode.hfp,
       );
     });

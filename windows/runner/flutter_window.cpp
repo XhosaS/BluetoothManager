@@ -4,10 +4,13 @@
 #include <stdexcept>
 
 #include <flutter/standard_method_codec.h>
+#include <flutter/event_stream_handler_functions.h>
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
 
 namespace {
+
+constexpr UINT kAudioStatusChangedMessage = WM_APP + 0x42;
 
 std::string WideToUtf8(const std::wstring& value) {
   if (value.empty()) return {};
@@ -164,6 +167,8 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   audio_manager_ = std::make_unique<AudioManager>();
+  audio_session_monitor_ = std::make_unique<AudioSessionMonitor>(
+      GetHandle(), kAudioStatusChangedMessage);
   audio_channel_ = std::make_unique<
       flutter::MethodChannel<flutter::EncodableValue>>(
       flutter_controller_->engine()->messenger(),
@@ -185,6 +190,12 @@ bool FlutterWindow::OnCreate() {
             result->Success(flutter::EncodableValue(list));
             return;
           }
+          if (call.method_name() == "clearWatch") {
+            watched_device_id_.clear();
+            audio_session_monitor_->Watch(L"");
+            result->Success();
+            return;
+          }
 
           const std::string id = MapString(call.arguments(), "deviceId");
           if (id.empty()) {
@@ -194,6 +205,13 @@ bool FlutterWindow::OnCreate() {
           if (call.method_name() == "getStatus") {
             result->Success(flutter::EncodableValue(
                 EncodeStatus(audio_manager_->GetStatus(Utf8ToWide(id)))));
+            return;
+          }
+          if (call.method_name() == "watchDevice") {
+            watched_device_id_ = Utf8ToWide(id);
+            const auto device = audio_manager_->GetDevice(watched_device_id_);
+            audio_session_monitor_->Watch(device.hfp_capture_endpoint_id);
+            result->Success();
             return;
           }
           if (call.method_name() == "setMode") {
@@ -207,6 +225,25 @@ bool FlutterWindow::OnCreate() {
           result->Error("windows_audio_error", error.what());
         }
       });
+  status_event_channel_ = std::make_unique<
+      flutter::EventChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "com.xhosa.bluetooth_audio_manager/audio_events",
+      &flutter::StandardMethodCodec::GetInstance());
+  status_event_channel_->SetStreamHandler(
+      std::make_unique<
+          flutter::StreamHandlerFunctions<flutter::EncodableValue>>(
+          [this](const flutter::EncodableValue*,
+                 std::unique_ptr<
+                     flutter::EventSink<flutter::EncodableValue>>&& sink) {
+            status_sink_ = std::move(sink);
+            PostMessageW(GetHandle(), kAudioStatusChangedMessage, 0, 0);
+            return nullptr;
+          },
+          [this](const flutter::EncodableValue*) {
+            status_sink_.reset();
+            return nullptr;
+          }));
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -222,6 +259,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  audio_session_monitor_.reset();
+  status_sink_.reset();
+  if (status_event_channel_) status_event_channel_->SetStreamHandler(nullptr);
+  status_event_channel_.reset();
   audio_channel_.reset();
   audio_manager_.reset();
   if (flutter_controller_) {
@@ -242,6 +283,21 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style & ~WS_EX_TOOLWINDOW);
     ShowWindow(hwnd, IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
     SetForegroundWindow(hwnd);
+    return 0;
+  }
+
+  if (message == kAudioStatusChangedMessage) {
+    if (status_sink_ && audio_manager_ && !watched_device_id_.empty()) {
+      try {
+        const auto device = audio_manager_->GetDevice(watched_device_id_);
+        audio_session_monitor_->Watch(device.hfp_capture_endpoint_id);
+        const auto value = flutter::EncodableValue(
+            EncodeStatus(audio_manager_->GetStatus(watched_device_id_)));
+        status_sink_->Success(value);
+      } catch (const std::exception& error) {
+        status_sink_->Error("windows_audio_error", error.what());
+      }
+    }
     return 0;
   }
 

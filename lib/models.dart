@@ -1,29 +1,34 @@
-enum BluetoothAudioMode { a2dp, hfp, mixed, offline }
+enum BluetoothAudioMode { a2dp, hfp, automatic, mixed, offline }
 
-BluetoothAudioMode trayToggleTarget(
-  BluetoothAudioMode configuredMode,
-  BluetoothAudioMode desiredMode,
-) {
-  if (configuredMode == BluetoothAudioMode.hfp) {
-    return BluetoothAudioMode.a2dp;
-  }
-  if (configuredMode == BluetoothAudioMode.a2dp) {
-    return BluetoothAudioMode.hfp;
-  }
-  return desiredMode == BluetoothAudioMode.hfp
-      ? BluetoothAudioMode.a2dp
-      : BluetoothAudioMode.hfp;
+BluetoothAudioMode trayToggleTarget(BluetoothAudioMode desiredMode) {
+  // The tray action cycles policies rather than the native configuration.
+  // In automatic mode the native configuration intentionally remains HFP-ready.
+  return switch (desiredMode) {
+    BluetoothAudioMode.a2dp => BluetoothAudioMode.hfp,
+    BluetoothAudioMode.hfp => BluetoothAudioMode.automatic,
+    BluetoothAudioMode.automatic => BluetoothAudioMode.a2dp,
+    BluetoothAudioMode.mixed ||
+    BluetoothAudioMode.offline => BluetoothAudioMode.a2dp,
+  };
 }
 
 extension BluetoothAudioModeText on BluetoothAudioMode {
   String get label => switch (this) {
     BluetoothAudioMode.a2dp => 'A2DP 高音质',
     BluetoothAudioMode.hfp => 'HFP 通话',
+    BluetoothAudioMode.automatic => '自动模式',
     BluetoothAudioMode.mixed => '混合状态',
     BluetoothAudioMode.offline => '设备离线',
   };
 
   String get wireName => name;
+
+  String get switchActionLabel => switch (this) {
+    BluetoothAudioMode.a2dp => '切换到 A2DP',
+    BluetoothAudioMode.hfp => '切换到 HFP',
+    BluetoothAudioMode.automatic => '切换到自动模式',
+    BluetoothAudioMode.mixed || BluetoothAudioMode.offline => '切换模式',
+  };
 
   static BluetoothAudioMode fromWire(String? value) =>
       BluetoothAudioMode.values.firstWhere(
@@ -83,6 +88,23 @@ class BluetoothAudioStatus {
   final bool a2dpIsDefault;
   final bool hfpRenderIsDefault;
   final bool hfpCaptureIsDefault;
+
+  bool isCompatibleWith(
+    BluetoothAudioMode desiredMode,
+  ) => switch (desiredMode) {
+    BluetoothAudioMode.automatic =>
+      connected && microphoneEnabled && a2dpIsDefault && hfpCaptureIsDefault,
+    BluetoothAudioMode.a2dp || BluetoothAudioMode.hfp => mode == desiredMode,
+    BluetoothAudioMode.mixed || BluetoothAudioMode.offline => false,
+  };
+
+  BluetoothAudioMode effectiveMode(BluetoothAudioMode desiredMode) {
+    if (!connected) return BluetoothAudioMode.offline;
+    if (desiredMode == BluetoothAudioMode.automatic) {
+      return hfpActive ? BluetoothAudioMode.hfp : BluetoothAudioMode.a2dp;
+    }
+    return mode;
+  }
 
   factory BluetoothAudioStatus.fromMap(Map<Object?, Object?> map) =>
       BluetoothAudioStatus(

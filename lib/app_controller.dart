@@ -15,7 +15,8 @@ class AppController extends ChangeNotifier {
 
   final BluetoothAudioPlatform platform;
   SharedPreferences? _preferences;
-  Timer? _pollTimer;
+  Timer? _watchdogTimer;
+  StreamSubscription<BluetoothAudioStatus>? _statusSubscription;
   bool _refreshing = false;
   bool _applyingMode = false;
 
@@ -28,13 +29,28 @@ class AppController extends ChangeNotifier {
   String? error;
 
   bool get applyingMode => _applyingMode;
+  BluetoothAudioMode get effectiveMode => status.effectiveMode(desiredMode);
+  String get effectiveModeLabel {
+    if (desiredMode != BluetoothAudioMode.automatic || !status.connected) {
+      return status.mode.label;
+    }
+    return status.hfpActive ? '自动 · HFP 通话' : '自动 · A2DP 高音质';
+  }
 
   Future<void> initialize() async {
+    _statusSubscription = platform.statusEvents.listen(
+      _handleNativeStatus,
+      onError: (Object exception) {
+        error = exception.toString();
+        notifyListeners();
+      },
+    );
     _preferences = await SharedPreferences.getInstance();
     desiredMode = BluetoothAudioModeText.fromWire(
       _preferences!.getString(_desiredModeKey),
     );
-    if (desiredMode != BluetoothAudioMode.hfp) {
+    if (desiredMode != BluetoothAudioMode.hfp &&
+        desiredMode != BluetoothAudioMode.automatic) {
       desiredMode = BluetoothAudioMode.a2dp;
     }
     launchAtStartupEnabled = _preferences!.getBool(_launchAtStartupKey) ?? true;
@@ -44,10 +60,22 @@ class AppController extends ChangeNotifier {
     }
     loading = false;
     notifyListeners();
-    _pollTimer = Timer.periodic(
-      const Duration(seconds: 1),
+    // Core Audio callbacks drive normal updates. This low-frequency watchdog
+    // only repairs state after unusual driver, sleep, or resume failures.
+    _watchdogTimer = Timer.periodic(
+      const Duration(seconds: 30),
       (_) => refresh(reapplyDesiredMode: true),
     );
+  }
+
+  Future<void> _handleNativeStatus(BluetoothAudioStatus nextStatus) async {
+    final connectionChanged = status.connected != nextStatus.connected;
+    status = nextStatus;
+    error = null;
+    notifyListeners();
+    if (connectionChanged) {
+      await refresh(reapplyDesiredMode: true);
+    }
   }
 
   Future<void> refresh({bool reapplyDesiredMode = false}) async {
@@ -62,14 +90,16 @@ class AppController extends ChangeNotifier {
           _findDevice(selectedId) ?? (devices.isEmpty ? null : devices.first);
       final device = selectedDevice;
       if (device == null) {
+        await platform.clearWatch();
         status = BluetoothAudioStatus.offline;
       } else {
         await _preferences?.setString(_selectedDeviceKey, device.id);
         status = await platform.getStatus(device.id);
+        await platform.watchDevice(device.id);
         if (reapplyDesiredMode &&
             !previousConnected &&
             device.connected &&
-            status.mode != desiredMode) {
+            !status.isCompatibleWith(desiredMode)) {
           _refreshing = false;
           await setMode(desiredMode);
           return;
@@ -102,13 +132,15 @@ class AppController extends ChangeNotifier {
 
   Future<void> setMode(BluetoothAudioMode mode) async {
     if (_applyingMode ||
-        (mode != BluetoothAudioMode.a2dp && mode != BluetoothAudioMode.hfp)) {
+        (mode != BluetoothAudioMode.a2dp &&
+            mode != BluetoothAudioMode.hfp &&
+            mode != BluetoothAudioMode.automatic)) {
       return;
     }
     desiredMode = mode;
     await _preferences?.setString(_desiredModeKey, mode.wireName);
     final device = selectedDevice;
-    if (device == null || !device.connected) {
+    if (device == null || !status.connected) {
       status = BluetoothAudioStatus.offline;
       notifyListeners();
       return;
@@ -146,7 +178,8 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _watchdogTimer?.cancel();
+    _statusSubscription?.cancel();
     super.dispose();
   }
 }

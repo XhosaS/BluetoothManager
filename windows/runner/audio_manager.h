@@ -27,6 +27,7 @@ struct BluetoothAudioStatusNative {
 class AudioManager {
  public:
   std::vector<BluetoothAudioDeviceNative> ListDevices();
+  BluetoothAudioDeviceNative GetDevice(const std::wstring& device_id);
   std::string Diagnostics();
   BluetoothAudioStatusNative GetStatus(const std::wstring& device_id);
   BluetoothAudioStatusNative SetMode(const std::wstring& device_id,

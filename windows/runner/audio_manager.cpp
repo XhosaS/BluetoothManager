@@ -404,6 +404,11 @@ BluetoothAudioDeviceNative AudioManager::FindDevice(
   return *found;
 }
 
+BluetoothAudioDeviceNative AudioManager::GetDevice(
+    const std::wstring& device_id) {
+  return FindDevice(device_id);
+}
+
 BluetoothAudioStatusNative AudioManager::GetStatus(
     const std::wstring& device_id) {
   const auto device = FindDevice(device_id);
@@ -498,7 +503,7 @@ BluetoothAudioStatusNative AudioManager::SetMode(
     } catch (const std::exception& error) {
       throw std::runtime_error(std::string("hfp_render_hide: ") + error.what());
     }
-  } else if (mode == "hfp") {
+  } else if (mode == "hfp" || mode == "automatic") {
     try {
       SetEndpointVisibility(device.hfp_render_endpoint_id, true);
     } catch (const std::exception& error) {
@@ -527,7 +532,9 @@ BluetoothAudioStatusNative AudioManager::SetMode(
     }
     try {
       // Windows 11 exposes Bluetooth output as a unified logical endpoint on
-      // current HFP drivers. The transport changes to HFP when capture starts.
+      // current HFP drivers. In automatic mode the capture endpoint stays
+      // available: the transport changes to HFP when capture starts and
+      // returns to A2DP when capture stops.
       SetDefaultEndpoint(device.a2dp_endpoint_id);
     } catch (const std::exception& error) {
       throw std::runtime_error(std::string("hfp_unified_render_default: ") +

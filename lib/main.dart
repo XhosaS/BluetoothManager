@@ -66,10 +66,7 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
 
   Future<void> _updateTrayMenu() async {
     final device = controller.selectedDevice;
-    final target = trayToggleTarget(
-      controller.status.mode,
-      controller.desiredMode,
-    );
+    final target = trayToggleTarget(controller.desiredMode);
     await trayManager.setContextMenu(
       Menu(
         items: <MenuItem>[
@@ -80,7 +77,7 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
           ),
           MenuItem(
             key: 'toggle_mode',
-            label: target == BluetoothAudioMode.a2dp ? '切换到 A2DP' : '切换到 HFP',
+            label: target.switchActionLabel,
             disabled: controller.applyingMode || device == null,
           ),
           MenuItem(key: 'exit', label: '退出'),
@@ -105,9 +102,7 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
   void onTrayMenuItemClick(MenuItem menuItem) {
     switch (menuItem.key) {
       case 'toggle_mode':
-        controller.setMode(
-          trayToggleTarget(controller.status.mode, controller.desiredMode),
-        );
+        controller.setMode(trayToggleTarget(controller.desiredMode));
         break;
       case 'exit':
         windowManager.destroy();
@@ -191,6 +186,7 @@ class SettingsPage extends StatelessWidget {
   Color _modeColor(BluetoothAudioMode mode) => switch (mode) {
     BluetoothAudioMode.a2dp => const Color(0xFF15803D),
     BluetoothAudioMode.hfp => const Color(0xFF2563EB),
+    BluetoothAudioMode.automatic => const Color(0xFF7C3AED),
     BluetoothAudioMode.mixed => const Color(0xFFD97706),
     BluetoothAudioMode.offline => const Color(0xFF64748B),
   };
@@ -232,7 +228,7 @@ class SettingsPage extends StatelessWidget {
                               ),
                               const SizedBox(width: 10),
                               Text(
-                                status.mode.label,
+                                controller.effectiveModeLabel,
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w700,
@@ -307,6 +303,22 @@ class SettingsPage extends StatelessWidget {
                                   label: const Padding(
                                     padding: EdgeInsets.symmetric(vertical: 14),
                                     child: Text('切换到 HFP'),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      device == null || controller.applyingMode
+                                      ? null
+                                      : () => controller.setMode(
+                                          BluetoothAudioMode.automatic,
+                                        ),
+                                  icon: const Icon(Icons.auto_mode),
+                                  label: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 14),
+                                    child: Text('自动模式'),
                                   ),
                                 ),
                               ),
@@ -435,6 +447,7 @@ class ModernSettingsPage extends StatelessWidget {
   Color _modeColor(BluetoothAudioMode mode) => switch (mode) {
     BluetoothAudioMode.a2dp => const Color(0xFF55D6BE),
     BluetoothAudioMode.hfp => const Color(0xFF7898FF),
+    BluetoothAudioMode.automatic => const Color(0xFFA78BFA),
     BluetoothAudioMode.mixed => const Color(0xFFFFC56B),
     BluetoothAudioMode.offline => const Color(0xFF8290AA),
   };
@@ -480,7 +493,7 @@ class ModernSettingsPage extends StatelessWidget {
                       const SizedBox(height: 16),
                       _ModernModeCard(
                         controller: controller,
-                        modeColor: _modeColor(controller.status.mode),
+                        modeColor: _modeColor(controller.effectiveMode),
                       ),
                       const SizedBox(height: 16),
                       Card(
@@ -611,7 +624,7 @@ class _ModernModeCard extends StatelessWidget {
                     border: Border.all(color: modeColor.withValues(alpha: 0.4)),
                   ),
                   child: Icon(
-                    status.mode == BluetoothAudioMode.a2dp
+                    controller.effectiveMode == BluetoothAudioMode.a2dp
                         ? Icons.graphic_eq_rounded
                         : Icons.headset_mic_rounded,
                     color: modeColor,
@@ -631,7 +644,7 @@ class _ModernModeCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        status.mode.label,
+                        controller.effectiveModeLabel,
                         style: const TextStyle(
                           fontSize: 23,
                           fontWeight: FontWeight.w700,
@@ -674,40 +687,44 @@ class _ModernModeCard extends StatelessWidget {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      backgroundColor: const Color(0xFF7898FF),
-                      foregroundColor: const Color(0xFF071027),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    onPressed: device == null || controller.applyingMode
-                        ? null
-                        : () => controller.setMode(BluetoothAudioMode.a2dp),
-                    icon: const Icon(Icons.high_quality_rounded),
-                    label: const Text('切换到 A2DP'),
+                  child: _ModernModeButton(
+                    controller: controller,
+                    mode: BluetoothAudioMode.a2dp,
+                    icon: Icons.high_quality_rounded,
+                    label: '切换到 A2DP',
+                    enabled: device != null && !controller.applyingMode,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    onPressed: device == null || controller.applyingMode
-                        ? null
-                        : () => controller.setMode(BluetoothAudioMode.hfp),
-                    icon: const Icon(Icons.mic_rounded),
-                    label: const Text('切换到 HFP'),
+                  child: _ModernModeButton(
+                    controller: controller,
+                    mode: BluetoothAudioMode.hfp,
+                    icon: Icons.mic_rounded,
+                    label: '切换到 HFP',
+                    enabled: device != null && !controller.applyingMode,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ModernModeButton(
+                    controller: controller,
+                    mode: BluetoothAudioMode.automatic,
+                    icon: Icons.auto_mode_rounded,
+                    label: '自动模式',
+                    enabled: device != null && !controller.applyingMode,
                   ),
                 ),
               ],
             ),
+            if (controller.desiredMode == BluetoothAudioMode.automatic)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text(
+                  '自动模式保持话筒可用：录音时进入 HFP，停止录音后恢复 A2DP 高音质。',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF8D9AB3)),
+                ),
+              ),
             if (controller.applyingMode) ...<Widget>[
               const SizedBox(height: 16),
               const LinearProgressIndicator(
@@ -717,6 +734,49 @@ class _ModernModeCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ModernModeButton extends StatelessWidget {
+  const _ModernModeButton({
+    required this.controller,
+    required this.mode,
+    required this.icon,
+    required this.label,
+    required this.enabled,
+  });
+
+  final AppController controller;
+  final BluetoothAudioMode mode;
+  final IconData icon;
+  final String label;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = controller.desiredMode == mode;
+    final background = selected
+        ? const Color(0xFF7898FF)
+        : const Color(0xFF343B4F);
+    final foreground = selected
+        ? const Color(0xFF071027)
+        : const Color(0xFFD9E0F2);
+    final border = selected ? const Color(0xFF7898FF) : const Color(0xFF48536A);
+
+    return FilledButton.icon(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(50),
+        backgroundColor: background,
+        foregroundColor: foreground,
+        disabledBackgroundColor: background,
+        disabledForegroundColor: foreground.withValues(alpha: 0.72),
+        side: BorderSide(color: border),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      onPressed: enabled ? () => controller.setMode(mode) : null,
+      icon: Icon(icon),
+      label: Text(label),
     );
   }
 }
@@ -792,12 +852,15 @@ class _ModernAppIcon extends StatelessWidget {
     width: 42,
     height: 42,
     decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: <Color>[Color(0xFF7898FF), Color(0xFF8B6CFF)],
-      ),
+      color: const Color(0xFF142033),
       borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: const Color(0x6655D6BE)),
       boxShadow: const <BoxShadow>[
-        BoxShadow(color: Color(0x557898FF), blurRadius: 18),
+        BoxShadow(
+          color: Color(0x55000000),
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
       ],
     ),
     child: Padding(
