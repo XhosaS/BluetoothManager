@@ -1,5 +1,5 @@
 #define MyAppName "蓝牙音频模式切换器"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Xhosa"
 #define MyAppExeName "bluetooth_audio_manager.exe"
 #define ServiceName "BluetoothAudioManagerService"
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\Bluetooth Audio Manager
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=BluetoothAudioManager-Setup
+OutputBaseFilename=BluetoothAudioManager-Setup-v{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -32,7 +32,7 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："
 
 [Run]
 Filename: "{sys}\sc.exe"; Parameters: "create {#ServiceName} binPath= ""{app}\bluetooth_audio_service.exe"" start= auto DisplayName= ""Bluetooth Audio Manager Service"""; Flags: runhidden waituntilterminated

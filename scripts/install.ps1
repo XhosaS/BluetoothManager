@@ -71,16 +71,19 @@ $shell = New-Object -ComObject WScript.Shell
 $startMenuDirectory = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"
 New-Item -ItemType Directory -Force $startMenuDirectory | Out-Null
 $startMenu = Join-Path $startMenuDirectory "Bluetooth Audio Manager.lnk"
-$installedIcon = Join-Path $Destination "data\flutter_assets\assets\bluetooth_mode_tray.ico"
-if (-not (Test-Path $installedIcon)) {
-  throw "Application icon not found after copying: $installedIcon"
+$desktopDirectory = [Environment]::GetFolderPath("Desktop")
+if ([string]::IsNullOrWhiteSpace($desktopDirectory)) {
+  throw "Unable to resolve the current user's Desktop directory."
 }
-Remove-Item -LiteralPath $startMenu -Force -ErrorAction SilentlyContinue
-$shortcut = $shell.CreateShortcut($startMenu)
-$shortcut.TargetPath = $appExe
-$shortcut.WorkingDirectory = $Destination
-$shortcut.IconLocation = "$installedIcon,0"
-$shortcut.Save()
+$desktopShortcut = Join-Path $desktopDirectory "Bluetooth Audio Manager.lnk"
+foreach ($shortcutPath in @($startMenu, $desktopShortcut)) {
+  Remove-Item -LiteralPath $shortcutPath -Force -ErrorAction SilentlyContinue
+  $shortcut = $shell.CreateShortcut($shortcutPath)
+  $shortcut.TargetPath = $appExe
+  $shortcut.WorkingDirectory = $Destination
+  $shortcut.IconLocation = "$appExe,0"
+  $shortcut.Save()
+}
 
 # Ask Explorer to discard stale shortcut and executable icon thumbnails.
 $iconRefresh = Join-Path $env:SystemRoot "System32\ie4uinit.exe"

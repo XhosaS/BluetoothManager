@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>蓝牙音频模式切换器 · Windows 11 原型 V2</title>
+  <style>
+    :root {
+      --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      --desktop: #dde3e8; --app: #f3f3f3; --titlebar: #f3f3f3; --sidebar: #f3f3f3;
+      --surface: #ffffff; --surface-hover: #f6f6f6; --surface-pressed: #eeeeee;
+      --selection: #e5e5e5; --selection-strong: #d7d7d7;
+      --control: #ffffff; --control-hover: #f7f7f7; --control-pressed: #ececec;
+      --text: #1a1a1a; --text-secondary: #5d5d5d; --text-tertiary: #7a7a7a;
+      --stroke: #e5e5e5; --stroke-strong: #c9c9c9; --indicator: #565656; --focus: #5f5f5f;
+      --success: #437c3f;
+    }
+    html[data-theme="dark"] {
+      --desktop: #111111; --app: #202020; --titlebar: #202020; --sidebar: #202020;
+      --surface: #2b2b2b; --surface-hover: #323232; --surface-pressed: #383838;
+      --selection: #2d2d2d; --selection-strong: #3a3a3a;
+      --control: #303030; --control-hover: #383838; --control-pressed: #414141;
+      --text: #ffffff; --text-secondary: #c9c9c9; --text-tertiary: #9c9c9c;
+      --stroke: #303030; --stroke-strong: #555555; --indicator: #d0d0d0; --focus: #d0d0d0;
+      --success: #78b875;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { background: var(--desktop); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; user-select: none; }
+    button, select, input { font: inherit; color: inherit; }
+    button { cursor: default; }
+    .desktop { width: 100%; height: 100%; display: grid; place-items: center; padding: 20px; }
+    .app-window {
+      width: min(1180px, calc(100vw - 40px)); height: min(780px, calc(100vh - 40px)); min-width: 760px; min-height: 560px;
+      display: grid; grid-template-rows: 52px 1fr; overflow: hidden; background: var(--app);
+      border: 1px solid color-mix(in srgb, var(--text) 16%, transparent); border-radius: 8px;
+    }
+    .titlebar { display: grid; grid-template-columns: 250px 1fr 150px; align-items: stretch; background: var(--titlebar); }
+    .title-left { display: flex; align-items: center; gap: 10px; padding-left: 16px; min-width: 0; }
+    .app-icon { width: 22px; height: 22px; object-fit: contain; }
+    .app-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+    .title-search { display: flex; align-items: center; justify-content: center; padding: 0 28px; }
+    .search-box { position: relative; width: min(520px, 100%); }
+    .search-box input { width: 100%; height: 32px; padding: 0 38px 0 36px; background: var(--control); border: 1px solid var(--stroke-strong); border-radius: 16px; outline: none; font-size: 13px; }
+    .search-box input:hover { background: var(--control-hover); }
+    .search-box input:focus { border-color: var(--focus); }
+    .search-box svg { position: absolute; left: 12px; top: 8px; width: 16px; height: 16px; fill: none; stroke: var(--text-secondary); stroke-width: 1.6; }
+    .caption-buttons { display: flex; justify-content: flex-end; }
+    .caption { width: 46px; border: 0; background: transparent; display: grid; place-items: center; color: var(--text); }
+    .caption:hover { background: var(--surface-hover); }
+    .caption.close:hover { color: white; background: #c42b1c; }
+    .caption svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+    .app-body { min-height: 0; display: grid; grid-template-columns: 250px 1fr; }
+    .sidebar { min-height: 0; display: flex; flex-direction: column; gap: 3px; padding: 14px 12px 18px; background: var(--sidebar); }
+    .nav-item { position: relative; width: 100%; height: 44px; padding: 0 14px; border: 0; border-radius: 5px; background: transparent; display: flex; align-items: center; gap: 13px; text-align: left; font-size: 14px; outline: none; transition: background-color .12s ease, transform .12s ease; }
+    .nav-item:hover { background: var(--surface-hover); transform: translateY(-1px); }
+    .nav-item:active { background: var(--surface-pressed); transform: none; }
+    .nav-item.active { background: var(--selection); }
+    .nav-item.active::before { content: ""; position: absolute; left: 0; top: 14px; width: 3px; height: 16px; border-radius: 2px; background: var(--indicator); }
+    .nav-item svg { width: 19px; height: 19px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.55; }
+    .sidebar-spacer { flex: 1; }
+    .sidebar-version { padding: 6px 14px 0 46px; color: var(--text-tertiary); font-size: 11px; }
+    .content { min-width: 0; min-height: 0; overflow-y: auto; padding: 34px 34px 44px; scrollbar-width: thin; scrollbar-color: var(--stroke-strong) transparent; }
+    .page { display: none; width: min(820px, 100%); margin: 0 auto; }
+    .page.active { display: block; }
+    .heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 24px; }
+    h1 { margin: 0; font: 600 28px/1.25 var(--font-display); letter-spacing: -.35px; }
+    h2 { margin: 26px 2px 10px; font-size: 14px; font-weight: 600; }
+    .heading-subtitle { margin-top: 5px; color: var(--text-secondary); font-size: 13px; }
+    .icon-button, .button { min-height: 32px; border: 1px solid var(--stroke-strong); border-radius: 4px; background: var(--control); transition: background-color .12s ease, transform .12s ease; }
+    .icon-button:hover, .button:hover { background: var(--control-hover); transform: translateY(-1px); }
+    .icon-button:active, .button:active { background: var(--control-pressed); transform: none; }
+    .icon-button { width: 34px; display: grid; place-items: center; }
+    .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+    .button { padding: 4px 14px; font-size: 13px; font-weight: 500; }
+    .settings-group { border: 1px solid var(--stroke); border-radius: 7px; overflow: visible; }
+    .setting-item { position: relative; min-height: 68px; padding: 11px 16px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; background: var(--surface); border-radius: 0; transition: background-color .12s ease, transform .12s ease; }
+    .setting-item:first-child { border-radius: 6px 6px 0 0; }
+    .setting-item:last-child { border-radius: 0 0 6px 6px; }
+    .setting-item:only-child { border-radius: 6px; }
+    .setting-item + .setting-item { border-top: 1px solid var(--stroke); }
+    .setting-item:hover { z-index: 1; background: var(--surface-hover); transform: translateY(-1px); }
+    .setting-item:active { background: var(--surface-pressed); transform: none; }
+    .item-icon { width: 32px; height: 32px; display: grid; place-items: center; color: var(--text-secondary); }
+    .item-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.55; }
+    .item-title { font-size: 14px; line-height: 1.4; }
+    .item-desc { margin-top: 2px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+    .select-wrap { position: relative; min-width: 260px; }
+    .select-wrap::after { content: ""; position: absolute; pointer-events: none; right: 12px; top: 11px; width: 7px; height: 7px; border-right: 1.5px solid var(--text); border-bottom: 1.5px solid var(--text); transform: rotate(45deg); }
+    select { appearance: none; width: 100%; height: 34px; padding: 0 36px 0 12px; border: 1px solid var(--stroke-strong); border-radius: 4px; background: var(--control); outline: none; font-size: 13px; }
+    select:hover { background: var(--control-hover); }
+    select:focus { border-color: var(--focus); }
+    .connection { display: flex; align-items: center; gap: 7px; color: var(--success); font-size: 12px; font-weight: 600; }
+    .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .refreshing { animation: rotate .7s linear infinite; }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+    .mode-list { display: grid; gap: 8px; }
+    .mode-option { position: relative; min-height: 72px; display: grid; grid-template-columns: 40px minmax(0,1fr) 22px; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--stroke); border-radius: 7px; background: var(--surface); text-align: left; outline: none; transition: background-color .12s ease, transform .12s ease; }
+    .mode-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .mode-option:hover { background: var(--surface-hover); transform: translateY(-2px); }
+    .mode-option:active { background: var(--surface-pressed); transform: none; }
+    .mode-option.selected { background: var(--selection); border-color: var(--stroke-strong); }
+    .mode-option.selected:hover { background: var(--selection-strong); }
+    .mode-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 4px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text-secondary); }
+    .mode-icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.55; }
+    .mode-name { display: block; font-size: 14px; font-weight: 600; }
+    .mode-description { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+    .radio { width: 18px; height: 18px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; display: grid; place-items: center; }
+    .selected .radio { border-color: var(--indicator); }
+    .selected .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--indicator); }
+    .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .status-item { min-height: 76px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--stroke); border-radius: 7px; transition: background-color .12s ease, transform .12s ease; }
+    .status-item:hover { background: var(--surface-hover); transform: translateY(-1px); }
+    .status-label { color: var(--text-secondary); font-size: 12px; }
+    .status-value { margin-top: 7px; display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
+    .status-mark { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+    .switch { width: 40px; height: 20px; padding: 2px; border: 1px solid var(--stroke-strong); border-radius: 999px; background: var(--control); }
+    .switch::after { content: ""; display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--text-secondary); transition: transform .14s ease; }
+    .switch.on { background: var(--selection-strong); border-color: var(--indicator); }
+    .switch.on::after { transform: translateX(18px); background: var(--indicator); }
+    .about { padding: 22px; display: grid; grid-template-columns: 64px 1fr; align-items: start; gap: 18px; border: 1px solid var(--stroke); border-radius: 7px; background: var(--surface); }
+    .about img { width: 64px; height: 64px; object-fit: contain; }
+    .about-name { font-size: 18px; font-weight: 600; }
+    .about-version { margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
+    .about-copy { margin-top: 14px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+    .toast { position: fixed; z-index: 20; left: 50%; bottom: 40px; min-width: 280px; padding: 11px 14px; display: flex; align-items: center; gap: 9px; background: var(--surface); border: 1px solid var(--stroke-strong); border-radius: 6px; opacity: 0; transform: translate(-50%, 10px); pointer-events: none; transition: .16s ease; font-size: 13px; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast svg { width: 17px; height: 17px; fill: none; stroke: var(--success); stroke-width: 1.8; }
+    @media (max-width: 900px) {
+      .titlebar { grid-template-columns: 196px 1fr 138px; }
+      .app-body { grid-template-columns: 196px 1fr; }
+      .content { padding-inline: 24px; }
+      .select-wrap { min-width: 190px; }
+      .status-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="desktop">
+    <main class="app-window" aria-label="蓝牙音频模式切换器 Windows 11 原型 V2">
+      <header class="titlebar">
+        <div class="title-left"><img class="app-icon" src="assets/app_icon.png" alt=""><span class="app-name">蓝牙音频模式切换器</span></div>
+        <div class="title-search"><label class="search-box"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg><input id="searchInput" type="search" placeholder="查找设置"></label></div>
+        <div class="caption-buttons" aria-label="窗口控件"><button class="caption" aria-label="最小化"><svg viewBox="0 0 12 12"><path d="M1 6.5h10"></path></svg></button><button class="caption" aria-label="最大化"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9"></rect></svg></button><button class="caption close" aria-label="关闭"><svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2 2 10"></path></svg></button></div>
+      </header>
+      <div class="app-body">
+        <aside class="sidebar">
+          <button class="nav-item active" data-page="audio"><svg viewBox="0 0 24 24"><path d="M5 17v-5a7 7 0 0 1 14 0v5"></path><path d="M5 14H3v5h4v-5H5Zm14 0h2v5h-4v-5h2Z"></path></svg><span class="nav-label">蓝牙音频</span></button>
+          <button class="nav-item" data-page="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1Z"></path></svg><span class="nav-label">常规设置</span></button>
+          <div class="sidebar-spacer"></div>
+          <button class="nav-item" data-page="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg><span class="nav-label">关于</span></button>
+          <div class="sidebar-version">版本 1.0.1</div>
+        </aside>
+        <section class="content">
+          <div class="page active" id="page-audio" data-screen-label="蓝牙音频">
+            <div class="heading"><div><h1>蓝牙音频</h1><div class="heading-subtitle">选择耳机并设置音频切换策略</div></div><button class="icon-button" id="refreshButton" title="刷新设备状态"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 5v6h-6"></path></svg></button></div>
+            <h2>目标设备</h2>
+            <div class="settings-group"><div class="setting-item"><div class="item-icon"><svg viewBox="0 0 24 24"><path d="M5 17v-5a7 7 0 0 1 14 0v5"></path><path d="M5 14H3v5h4v-5H5Zm14 0h2v5h-4v-5h2Z"></path></svg></div><div><div class="item-title">蓝牙耳机</div><div class="item-desc"><span class="connection"><span class="connection-dot"></span><span id="connectionText">已连接 · 支持 A2DP 与 HFP</span></span></div></div><div class="select-wrap"><select id="deviceSelect" aria-label="选择蓝牙耳机"><option value="AirPods Max">AirPods Max</option><option value="WH-1000XM5">WH-1000XM5（离线）</option></select></div></div></div>
+            <h2>音频策略</h2>
+            <div class="mode-list" role="radiogroup" aria-label="音频策略">
+              <button class="mode-option" data-mode="a2dp" role="radio" aria-checked="false"><span class="mode-icon"><svg viewBox="0 0 24 24"><path d="M4 15v-2m4 5V9m4 11V5m4 12V8m4 6v-4"></path></svg></span><span><span class="mode-name">A2DP 高音质</span><span class="mode-description">使用高质量立体声播放，并关闭所选耳机的 HFP 输入与输出端点。</span></span><span class="radio"></span></button>
+              <button class="mode-option" data-mode="hfp" role="radio" aria-checked="false"><span class="mode-icon"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span><span><span class="mode-name">HFP 通话</span><span class="mode-description">启用耳机话筒，并配置对应的默认输入与输出。</span></span><span class="radio"></span></button>
+              <button class="mode-option selected" data-mode="automatic" role="radio" aria-checked="true"><span class="mode-icon"><svg viewBox="0 0 24 24"><path d="M5 8a8 8 0 0 1 13.5-2L21 8.5M19 16a8 8 0 0 1-13.5 2L3 15.5"></path><path d="M21 4v4.5h-4.5M3 20v-4.5h4.5"></path></svg></span><span><span class="mode-name">自动模式</span><span class="mode-description">话筒活动时进入 HFP，停止使用后恢复 A2DP 高音质。</span></span><span class="radio"></span></button>
+            </div>
+            <h2>当前状态</h2>
+            <div class="status-grid"><div class="status-item"><div class="status-label">当前音频配置</div><div class="status-value"><span class="status-mark"></span><span id="effectiveMode">自动 · A2DP 高音质</span></div></div><div class="status-item"><div class="status-label">HFP 活动</div><div class="status-value"><span class="status-mark"></span><span id="hfpActivity">未活动</span></div></div><div class="status-item"><div class="status-label">默认端点</div><div class="status-value"><span class="status-mark"></span><span id="endpointStatus">播放与话筒已就绪</span></div></div></div>
+          </div>
+          <div class="page" id="page-settings" data-screen-label="常规设置">
+            <div class="heading"><div><h1>常规设置</h1><div class="heading-subtitle">调整应用的启动、后台与外观行为</div></div></div>
+            <h2>启动与后台</h2>
+            <div class="settings-group">
+              <div class="setting-item"><div class="item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v10M5 5a9 9 0 1 0 14 0"></path></svg></div><div><div class="item-title">登录 Windows 后自动启动</div><div class="item-desc">后台启动，仅驻留在任务栏通知区域</div></div><button class="switch on" role="switch" aria-checked="true"></button></div>
+              <div class="setting-item"><div class="item-icon"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"></path></svg></div><div><div class="item-title">模式切换通知</div><div class="item-desc">自动切换音频配置时显示系统通知</div></div><button class="switch on" role="switch" aria-checked="true"></button></div>
+              <div class="setting-item"><div class="item-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16"></path></svg></div><div><div class="item-title">关闭主窗口时</div><div class="item-desc">应用仍可通过任务栏通知区域操作</div></div><div class="select-wrap" style="min-width:180px"><select aria-label="关闭窗口行为"><option>最小化到托盘</option><option>退出应用</option></select></div></div>
+            </div>
+            <h2>外观</h2>
+            <div class="settings-group"><div class="setting-item"><div class="item-icon"><svg viewBox="0 0 24 24"><path d="M20.5 14.5A8.3 8.3 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"></path></svg></div><div><div class="item-title">应用主题</div><div class="item-desc">浅色与深色主题均遵循 Windows 11 设置页样式</div></div><div class="select-wrap" style="min-width:150px"><select id="themeSelect" aria-label="应用主题"><option value="dark">深色</option><option value="light">浅色</option></select></div></div></div>
+          </div>
+          <div class="page" id="page-about" data-screen-label="关于">
+            <div class="heading"><h1>关于</h1></div><div class="about"><img src="assets/app_icon.png" alt="蓝牙音频模式切换器图标"><div><div class="about-name">蓝牙音频模式切换器</div><div class="about-version">版本 1.0.1 · Windows 11 x64</div><div class="about-copy">在 A2DP 高音质、HFP 通话与自动模式之间切换。应用根据 Windows ContainerId 关联同一耳机的音频端点，并在设备重新连接后恢复选定策略。</div></div></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"></path></svg><span id="toastText">设置已更新</span></div>
+  <script>
+    const root = document.documentElement;
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function showToast(message) { document.getElementById('toastText').textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 1900); }
+    function setTheme(theme) { root.dataset.theme = theme; document.getElementById('themeSelect').value = theme; localStorage.setItem('bt-prototype-theme-v2', theme); }
+    setTheme(localStorage.getItem('bt-prototype-theme-v2') || 'dark');
+    document.querySelectorAll('.nav-item').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.page').forEach(page => page.classList.remove('active')); document.getElementById(`page-${button.dataset.page}`).classList.add('active'); document.querySelector('.content').scrollTop = 0; }));
+    const modeState = { a2dp: ['A2DP 高音质', '未活动', 'A2DP 播放已设为默认'], hfp: ['HFP 通话', '等待话筒使用', 'HFP 输入与输出已就绪'], automatic: ['自动 · A2DP 高音质', '未活动', '播放与话筒已就绪'] };
+    document.querySelectorAll('.mode-option').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('.mode-option').forEach(item => { item.classList.remove('selected'); item.setAttribute('aria-checked', 'false'); }); button.classList.add('selected'); button.setAttribute('aria-checked', 'true'); const state = modeState[button.dataset.mode]; document.getElementById('effectiveMode').textContent = state[0]; document.getElementById('hfpActivity').textContent = state[1]; document.getElementById('endpointStatus').textContent = state[2]; showToast(`已切换到${button.querySelector('.mode-name').textContent}`); }));
+    document.getElementById('deviceSelect').addEventListener('change', event => { const offline = event.target.value.includes('WH-1000'); document.getElementById('connectionText').textContent = offline ? '设备离线 · 重新连接后自动恢复策略' : '已连接 · 支持 A2DP 与 HFP'; showToast(`已选择 ${event.target.value}`); });
+    document.getElementById('themeSelect').addEventListener('change', event => { setTheme(event.target.value); showToast(`已切换为${event.target.value === 'dark' ? '深色' : '浅色'}主题`); });
+    document.querySelectorAll('.switch').forEach(control => control.addEventListener('click', () => { const enabled = control.classList.toggle('on'); control.setAttribute('aria-checked', String(enabled)); showToast(enabled ? '设置已开启' : '设置已关闭'); }));
+    document.getElementById('refreshButton').addEventListener('click', event => { const icon = event.currentTarget.querySelector('svg'); icon.classList.add('refreshing'); setTimeout(() => { icon.classList.remove('refreshing'); showToast('设备与音频状态已刷新'); }, 700); });
+    document.getElementById('searchInput').addEventListener('keydown', event => { if (event.key === 'Enter' && event.target.value.trim()) showToast(`没有找到“${event.target.value.trim()}”的其他设置`); });
+  </script>
+</body>
+</html>

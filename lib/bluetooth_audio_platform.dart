@@ -96,4 +96,17 @@ class BluetoothAudioPlatform {
       throw BluetoothAudioException(error.code, error.message ?? '无法修改开机启动设置');
     }
   }
+
+  Future<void> setNativeDarkMode(bool enabled) async {
+    try {
+      await _channel.invokeMethod<void>('setNativeDarkMode', <String, Object?>{
+        'enabled': enabled,
+      });
+    } on PlatformException catch (error) {
+      throw BluetoothAudioException(
+        error.code,
+        error.message ?? '无法更新 Windows 原生主题',
+      );
+    }
+  }
 }

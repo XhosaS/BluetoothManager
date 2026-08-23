@@ -12,6 +12,7 @@ class AppController extends ChangeNotifier {
   static const _selectedDeviceKey = 'selected_device_id';
   static const _desiredModeKey = 'desired_mode';
   static const _launchAtStartupKey = 'launch_at_startup';
+  static const _darkThemeKey = 'dark_theme';
 
   final BluetoothAudioPlatform platform;
   SharedPreferences? _preferences;
@@ -25,6 +26,7 @@ class AppController extends ChangeNotifier {
   BluetoothAudioStatus status = BluetoothAudioStatus.offline;
   BluetoothAudioMode desiredMode = BluetoothAudioMode.a2dp;
   bool launchAtStartupEnabled = true;
+  bool darkThemeEnabled = true;
   bool loading = true;
   String? error;
 
@@ -54,6 +56,7 @@ class AppController extends ChangeNotifier {
       desiredMode = BluetoothAudioMode.a2dp;
     }
     launchAtStartupEnabled = _preferences!.getBool(_launchAtStartupKey) ?? true;
+    darkThemeEnabled = _preferences!.getBool(_darkThemeKey) ?? true;
     await refresh(reapplyDesiredMode: true);
     if (launchAtStartupEnabled) {
       await _setStartupRegistration(true, reportError: true);
@@ -162,6 +165,13 @@ class AppController extends ChangeNotifier {
     launchAtStartupEnabled = enabled;
     await _preferences?.setBool(_launchAtStartupKey, enabled);
     await _setStartupRegistration(enabled, reportError: true);
+    notifyListeners();
+  }
+
+  Future<void> setDarkTheme(bool enabled) async {
+    if (darkThemeEnabled == enabled) return;
+    darkThemeEnabled = enabled;
+    await _preferences?.setBool(_darkThemeKey, enabled);
     notifyListeners();
   }
 

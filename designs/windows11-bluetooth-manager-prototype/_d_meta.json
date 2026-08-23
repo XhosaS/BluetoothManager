@@ -1,0 +1,28 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "Windows 11 蓝牙音频管理器高保真原型": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-08-23T13:35:35.867Z",
+          "status": "needs-review"
+        },
+        {
+          "path": "index-v1.html",
+          "createdAt": "2026-08-23T13:55:51.598Z",
+          "status": "changes-requested"
+        },
+        {
+          "path": "index-v2.html",
+          "createdAt": "2026-08-23T14:14:54.583Z",
+          "status": "changes-requested"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-08-23T13:35:35.868Z",
+  "updatedAt": "2026-08-23T14:45:38.777Z"
+}

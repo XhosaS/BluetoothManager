@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <dwmapi.h>
 #include <optional>
 #include <stdexcept>
 
@@ -11,6 +12,58 @@
 namespace {
 
 constexpr UINT kAudioStatusChangedMessage = WM_APP + 0x42;
+
+// Windows 10 1903+ exposes these theme functions from uxtheme.dll by ordinal.
+// They are also used by Microsoft PowerToys to make Win32 context menus follow
+// an application's explicit light/dark preference.
+enum class PreferredAppMode {
+  kDefault,
+  kAllowDark,
+  kForceDark,
+  kForceLight,
+  kMax,
+};
+
+using SetPreferredAppMode =
+    PreferredAppMode(WINAPI*)(PreferredAppMode app_mode);
+using AllowDarkModeForWindow = bool(WINAPI*)(HWND window, bool allow);
+using FlushMenuThemes = void(WINAPI*)();
+
+void SetNativeDarkMode(HWND window, bool enabled) {
+  const BOOL use_dark_mode = enabled ? TRUE : FALSE;
+  HRESULT result = DwmSetWindowAttribute(
+      window, 20, &use_dark_mode, sizeof(use_dark_mode));
+  if (FAILED(result)) {
+    DwmSetWindowAttribute(window, 19, &use_dark_mode,
+                          sizeof(use_dark_mode));
+  }
+
+  static HMODULE ux_theme =
+      LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+  if (ux_theme == nullptr) return;
+
+  static const auto set_preferred_app_mode =
+      reinterpret_cast<SetPreferredAppMode>(
+          GetProcAddress(ux_theme, MAKEINTRESOURCEA(135)));
+  static const auto allow_dark_mode_for_window =
+      reinterpret_cast<AllowDarkModeForWindow>(
+          GetProcAddress(ux_theme, MAKEINTRESOURCEA(133)));
+  static const auto flush_menu_themes = reinterpret_cast<FlushMenuThemes>(
+      GetProcAddress(ux_theme, MAKEINTRESOURCEA(136)));
+
+  if (set_preferred_app_mode != nullptr) {
+    set_preferred_app_mode(enabled ? PreferredAppMode::kForceDark
+                                   : PreferredAppMode::kForceLight);
+  }
+  if (allow_dark_mode_for_window != nullptr) {
+    allow_dark_mode_for_window(window, enabled);
+  }
+  if (flush_menu_themes != nullptr) {
+    flush_menu_themes();
+  }
+  RedrawWindow(window, nullptr, nullptr,
+               RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+}
 
 std::string WideToUtf8(const std::wstring& value) {
   if (value.empty()) return {};
@@ -178,6 +231,12 @@ bool FlutterWindow::OnCreate() {
   audio_channel_->SetMethodCallHandler(
       [this](const auto& call, auto result) {
         try {
+          if (call.method_name() == "setNativeDarkMode") {
+            SetNativeDarkMode(GetHandle(),
+                              MapBool(call.arguments(), "enabled"));
+            result->Success();
+            return;
+          }
           if (call.method_name() == "setLaunchAtStartup") {
             SetLaunchAtStartup(MapBool(call.arguments(), "enabled"));
             result->Success();
