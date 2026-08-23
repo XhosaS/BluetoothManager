@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:bluetooth_audio_manager/app_controller.dart';
+import 'package:bluetooth_audio_manager/bluetooth_audio_platform.dart';
 import 'package:bluetooth_audio_manager/models.dart';
 import 'package:bluetooth_audio_manager/windows_settings_page.dart';
 import 'package:flutter/gestures.dart';
@@ -55,6 +58,8 @@ void main() {
       expect(tester.takeException(), isNull, reason: entry.key);
       expect(find.text("耳机 (Xhosa's AirPods Max)"), findsOneWidget);
       expect(find.text('自动模式'), findsOneWidget);
+      expect(find.text('端口'), findsOneWidget);
+      expect(find.text('端点'), findsNothing);
     }
   });
 
@@ -73,6 +78,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('登录 Windows 后自动启动'), findsOneWidget);
       expect(find.text('最小化到托盘'), findsOneWidget);
+      expect(find.text('浅色与深色主题均采用 Windows 11 设置页样式'), findsNothing);
       expect(
         find.text(brightness == Brightness.dark ? '深色' : '浅色'),
         findsOneWidget,
@@ -89,7 +95,7 @@ void main() {
     );
 
     final aboutX = tester.getTopLeft(find.text('关于')).dx;
-    final versionX = tester.getTopLeft(find.text('版本 1.0.1')).dx;
+    final versionX = tester.getTopLeft(find.text('版本 1.0.2')).dx;
     expect(versionX, closeTo(aboutX, 0.01));
   });
 
@@ -172,6 +178,54 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('当前状态'), findsOneWidget);
   });
+
+  testWidgets(
+    'mode change keeps UI responsive and updates toast asynchronously',
+    (tester) async {
+      final platform = _PendingModePlatform();
+      final asyncController = AppController(platform: platform)
+        ..devices = controller.devices
+        ..selectedDevice = controller.selectedDevice
+        ..desiredMode = BluetoothAudioMode.automatic
+        ..status = controller.status
+        ..loading = false;
+      addTearDown(asyncController.dispose);
+
+      await _pumpAtSize(
+        tester,
+        controller: asyncController,
+        size: const Size(980, 720),
+        brightness: Brightness.dark,
+      );
+      await tester.tap(find.text('A2DP 高音质'));
+      await tester.pump();
+
+      expect(find.text('正在切换到A2DP 高音质…'), findsOneWidget);
+      expect(asyncController.applyingMode, isTrue);
+
+      await tester.tap(find.text('常规设置').first);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('登录 Windows 后自动启动'), findsOneWidget);
+
+      platform.complete(controller.status);
+      await tester.pump();
+      expect(find.text('已切换到A2DP 高音质'), findsOneWidget);
+      expect(asyncController.applyingMode, isFalse);
+    },
+  );
+}
+
+class _PendingModePlatform extends BluetoothAudioPlatform {
+  final Completer<BluetoothAudioStatus> _mode =
+      Completer<BluetoothAudioStatus>();
+
+  @override
+  Future<BluetoothAudioStatus> setMode(
+    String deviceId,
+    BluetoothAudioMode mode,
+  ) => _mode.future;
+
+  void complete(BluetoothAudioStatus status) => _mode.complete(status);
 }
 
 Future<void> _pumpAtSize(

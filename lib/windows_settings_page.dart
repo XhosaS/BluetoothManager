@@ -39,6 +39,7 @@ class _WindowsSettingsPageState extends State<WindowsSettingsPage> {
 
   Future<void> setMode(BluetoothAudioMode mode) async {
     if (controller.applyingMode || controller.selectedDevice == null) return;
+    showToast('正在切换到${mode.label}…');
     await controller.setMode(mode);
     if (!mounted) return;
     showToast(controller.error == null ? '已切换到${mode.label}' : '模式切换未完成');
@@ -239,7 +240,7 @@ class _Sidebar extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '版本 1.0.1',
+                    '版本 1.0.2',
                     style: TextStyle(fontSize: 11, color: palette.textTertiary),
                   ),
                 ),
@@ -457,7 +458,7 @@ class _AudioPage extends StatelessWidget {
           _ModeOption(
             icon: Icons.graphic_eq_rounded,
             title: 'A2DP 高音质',
-            description: '使用高质量立体声播放，并关闭所选耳机的 HFP 输入与输出端点。',
+            description: '使用高质量立体声播放，并关闭所选耳机的 HFP 输入与输出端口。',
             selected: controller.desiredMode == BluetoothAudioMode.a2dp,
             enabled:
                 controller.selectedDevice != null && !controller.applyingMode,
@@ -854,7 +855,7 @@ class _StatusStrip extends StatelessWidget {
         ),
         _StatusPill(label: 'HFP', value: hfpLabel, active: status.hfpActive),
         _StatusPill(
-          label: '端点',
+          label: '端口',
           value: endpointLabel,
           active: status.connected,
         ),
@@ -955,7 +956,6 @@ class _GeneralPage extends StatelessWidget {
                 ? Icons.dark_mode_outlined
                 : Icons.light_mode_outlined,
             title: '应用主题',
-            description: '浅色与深色主题均采用 Windows 11 设置页样式',
             trailing: _ThemePicker(
               dark: controller.darkThemeEnabled,
               onChanged: (dark) async {
@@ -978,13 +978,13 @@ class _SettingRow extends StatelessWidget {
   const _SettingRow({
     required this.icon,
     required this.title,
-    required this.description,
+    this.description,
     required this.trailing,
   });
 
   final IconData icon;
   final String title;
-  final String description;
+  final String? description;
   final Widget trailing;
 
   @override
@@ -1010,15 +1010,17 @@ class _SettingRow extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      description,
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 12,
-                        height: 1.4,
+                    if (description != null) ...<Widget>[
+                      const SizedBox(height: 3),
+                      Text(
+                        description!,
+                        style: TextStyle(
+                          color: palette.textSecondary,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -1228,7 +1230,7 @@ class _AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '版本 1.0.1 · Windows 11 x64',
+                      '版本 1.0.2 · Windows 11 x64',
                       style: TextStyle(
                         color: palette.textTertiary,
                         fontSize: 12,
@@ -1236,7 +1238,7 @@ class _AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 15),
                     Text(
-                      '在 A2DP 高音质、HFP 通话与自动模式之间切换。应用根据 Windows ContainerId 关联同一耳机的音频端点，并在设备重新连接后恢复选定策略。',
+                      '在 A2DP 高音质、HFP 通话与自动模式之间切换。应用根据 Windows ContainerId 关联同一耳机的音频端口，并在设备重新连接后恢复选定策略。',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 13,

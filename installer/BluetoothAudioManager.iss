@@ -1,5 +1,5 @@
 #define MyAppName "蓝牙音频模式切换器"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "Xhosa"
 #define MyAppExeName "bluetooth_audio_manager.exe"
 #define ServiceName "BluetoothAudioManagerService"

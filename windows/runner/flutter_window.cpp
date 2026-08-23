@@ -3,6 +3,7 @@
 #include <dwmapi.h>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 
 #include <flutter/standard_method_codec.h>
 #include <flutter/event_stream_handler_functions.h>
@@ -12,6 +13,15 @@
 namespace {
 
 constexpr UINT kAudioStatusChangedMessage = WM_APP + 0x42;
+constexpr UINT kAudioModeCompletedMessage = WM_APP + 0x43;
+
+using AudioMethodResult = flutter::MethodResult<flutter::EncodableValue>;
+
+struct AudioModeTaskResult {
+  std::unique_ptr<AudioMethodResult> method_result;
+  std::optional<BluetoothAudioStatusNative> status;
+  std::string error;
+};
 
 // Windows 10 1903+ exposes these theme functions from uxtheme.dll by ordinal.
 // They are also used by Microsoft PowerToys to make Win32 context menus follow
@@ -276,8 +286,36 @@ bool FlutterWindow::OnCreate() {
           }
           if (call.method_name() == "setMode") {
             const std::string mode = MapString(call.arguments(), "mode");
-            result->Success(flutter::EncodableValue(EncodeStatus(
-                audio_manager_->SetMode(Utf8ToWide(id), mode))));
+            if (audio_mode_task_running_.exchange(true)) {
+              result->Error("operation_in_progress", "另一项音频策略正在应用。");
+              return;
+            }
+
+            const HWND window = GetHandle();
+            std::thread([window, id, mode, result = std::move(result)]() mutable {
+              auto completed = std::make_unique<AudioModeTaskResult>();
+              completed->method_result = std::move(result);
+              const HRESULT com_result =
+                  CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+              try {
+                if (FAILED(com_result) && com_result != RPC_E_CHANGED_MODE) {
+                  throw std::runtime_error(
+                      "无法初始化后台音频策略线程。");
+                }
+                AudioManager background_audio_manager;
+                completed->status = background_audio_manager.SetMode(
+                    Utf8ToWide(id), mode);
+              } catch (const std::exception& error) {
+                completed->error = error.what();
+              }
+              if (SUCCEEDED(com_result)) CoUninitialize();
+
+              auto* message_result = completed.release();
+              if (!PostMessageW(window, kAudioModeCompletedMessage, 0,
+                                reinterpret_cast<LPARAM>(message_result))) {
+                delete message_result;
+              }
+            }).detach();
             return;
           }
           result->NotImplemented();
@@ -349,6 +387,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   if (message == kAudioStatusChangedMessage) {
+    // Policy changes emit several endpoint callbacks. The background task
+    // returns one authoritative final snapshot, so avoid synchronous COM work
+    // on the UI thread while it is running.
+    if (audio_mode_task_running_) return 0;
     if (status_sink_ && audio_manager_ && !watched_device_id_.empty()) {
       try {
         const auto device = audio_manager_->GetDevice(watched_device_id_);
@@ -359,6 +401,24 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       } catch (const std::exception& error) {
         status_sink_->Error("windows_audio_error", error.what());
       }
+    }
+    return 0;
+  }
+
+  if (message == kAudioModeCompletedMessage) {
+    std::unique_ptr<AudioModeTaskResult> completed(
+        reinterpret_cast<AudioModeTaskResult*>(lparam));
+    audio_mode_task_running_ = false;
+    if (!completed || !completed->method_result) return 0;
+    if (!completed->error.empty()) {
+      completed->method_result->Error("windows_audio_error",
+                                      completed->error);
+    } else if (completed->status) {
+      completed->method_result->Success(
+          flutter::EncodableValue(EncodeStatus(*completed->status)));
+    } else {
+      completed->method_result->Error("windows_audio_error",
+                                      "音频策略切换未返回状态。");
     }
     return 0;
   }

@@ -7,6 +7,7 @@
 #include <flutter/event_sink.h>
 #include <flutter/method_channel.h>
 
+#include <atomic>
 #include <memory>
 
 #include "win32_window.h"
@@ -43,6 +44,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<AudioManager> audio_manager_;
   std::unique_ptr<AudioSessionMonitor> audio_session_monitor_;
   std::wstring watched_device_id_;
+  std::atomic_bool audio_mode_task_running_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

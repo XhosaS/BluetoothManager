@@ -1,5 +1,5 @@
 param(
-  [string]$Version = "1.0.1"
+  [string]$Version = "1.0.2"
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +18,7 @@ Copy-Item (Join-Path $release "*") (Join-Path $packageRoot "app") -Recurse -Forc
 Copy-Item (Join-Path $PSScriptRoot "install.ps1") $packageRoot
 Copy-Item (Join-Path $PSScriptRoot "uninstall.ps1") $packageRoot
 Copy-Item (Join-Path $projectRoot "README.md") $packageRoot
+Copy-Item (Join-Path $projectRoot "CHANGELOG.md") $packageRoot
 Remove-Item $archive -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $archive -CompressionLevel Optimal
 Write-Host $archive
