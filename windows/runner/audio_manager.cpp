@@ -136,6 +136,40 @@ std::wstring PnpContainerId(const std::wstring& instance_id) {
              : std::wstring{};
 }
 
+std::vector<std::wstring> UsbAudioContainerIds() {
+  constexpr wchar_t media_class[] =
+      L"{4D36E96C-E325-11CE-BFC1-08002BE10318}";
+  ULONG list_size = 0;
+  if (CM_Get_Device_ID_List_SizeW(&list_size, media_class,
+                                  CM_GETIDLIST_FILTER_CLASS) != CR_SUCCESS ||
+      list_size <= 1) {
+    return {};
+  }
+
+  std::vector<wchar_t> ids(list_size);
+  if (CM_Get_Device_ID_ListW(media_class, ids.data(), list_size,
+                            CM_GETIDLIST_FILTER_CLASS) != CR_SUCCESS) {
+    return {};
+  }
+
+  std::vector<std::wstring> containers;
+  for (const wchar_t* current = ids.data(); *current;
+       current += wcslen(current) + 1) {
+    constexpr wchar_t usb_prefix[] = L"USB\\";
+    if (_wcsnicmp(current, usb_prefix, std::size(usb_prefix) - 1) != 0) {
+      continue;
+    }
+    const std::wstring container = PnpContainerId(current);
+    if (container.empty()) continue;
+    const auto existing =
+        std::find_if(containers.begin(), containers.end(), [&](const auto& id) {
+          return _wcsicmp(id.c_str(), container.c_str()) == 0;
+        });
+    if (existing == containers.end()) containers.push_back(container);
+  }
+  return containers;
+}
+
 std::wstring PnpStringProperty(DEVINST device, const DEVPROPKEY& key) {
   DEVPROPTYPE type = 0;
   ULONG size = 0;
@@ -329,6 +363,7 @@ std::string WideToUtf8(const std::wstring& value) {
 
 std::vector<BluetoothAudioDeviceNative> AudioManager::ListDevices() {
   const auto endpoints = EnumerateEndpoints();
+  const auto usb_audio_containers = UsbAudioContainerIds();
   std::map<std::wstring, BluetoothAudioDeviceNative> grouped;
   for (const auto& endpoint : endpoints) {
     if (endpoint.container_id == L"{00000000-0000-0000-FFFF-FFFFFFFFFFFF}") {
@@ -360,6 +395,12 @@ std::vector<BluetoothAudioDeviceNative> AudioManager::ListDevices() {
 
   std::vector<BluetoothAudioDeviceNative> devices;
   for (auto& [id, device] : grouped) {
+    const bool is_usb_audio = std::any_of(
+        usb_audio_containers.begin(), usb_audio_containers.end(),
+        [&](const auto& container) {
+          return _wcsicmp(id.c_str(), container.c_str()) == 0;
+        });
+    if (is_usb_audio) continue;
     if (!device.a2dp_endpoint_id.empty() &&
         !device.hfp_render_endpoint_id.empty() &&
         !device.hfp_capture_endpoint_id.empty() &&
