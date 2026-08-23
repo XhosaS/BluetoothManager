@@ -66,7 +66,7 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
 
   Future<void> _updateTrayMenu() async {
     final device = controller.selectedDevice;
-    final target = trayToggleTarget(controller.desiredMode);
+    final modeSelectionDisabled = controller.applyingMode || device == null;
     await trayManager.setContextMenu(
       Menu(
         items: <MenuItem>[
@@ -75,10 +75,26 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
             label: 'HFP 活动：${controller.status.hfpActive ? '是' : '否'}',
             disabled: true,
           ),
-          MenuItem(
-            key: 'toggle_mode',
-            label: target.switchActionLabel,
-            disabled: controller.applyingMode || device == null,
+          MenuItem.checkbox(
+            key: 'mode_a2dp',
+            label: '切换到 A2DP',
+            checked: isTrayModeSelected(controller.desiredMode, 'mode_a2dp'),
+            disabled: modeSelectionDisabled,
+          ),
+          MenuItem.checkbox(
+            key: 'mode_hfp',
+            label: '切换到 HFP',
+            checked: isTrayModeSelected(controller.desiredMode, 'mode_hfp'),
+            disabled: modeSelectionDisabled,
+          ),
+          MenuItem.checkbox(
+            key: 'mode_automatic',
+            label: '自动',
+            checked: isTrayModeSelected(
+              controller.desiredMode,
+              'mode_automatic',
+            ),
+            disabled: modeSelectionDisabled,
           ),
           MenuItem(key: 'exit', label: '退出'),
         ],
@@ -96,14 +112,21 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
   void onTrayIconMouseDown() => _showWindow();
 
   @override
-  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+  void onTrayIconRightMouseDown() {
+    // Windows requires the menu owner to be foregrounded so TrackPopupMenu
+    // dismisses the menu when the user clicks elsewhere.
+    // ignore: deprecated_member_use
+    trayManager.popUpContextMenu(bringAppToFront: true);
+  }
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
+    final mode = trayModeFromMenuKey(menuItem.key);
+    if (mode != null) {
+      controller.setMode(mode);
+      return;
+    }
     switch (menuItem.key) {
-      case 'toggle_mode':
-        controller.setMode(trayToggleTarget(controller.desiredMode));
-        break;
       case 'exit':
         windowManager.destroy();
         break;

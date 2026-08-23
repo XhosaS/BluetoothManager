@@ -114,7 +114,7 @@ installer\output\BluetoothAudioManager-Setup.exe
 托盘菜单包含：
 
 - HFP 活动状态
-- 按 A2DP → HFP → 自动模式 → A2DP 循环的动态切换项
+- 切换到 A2DP、切换到 HFP、自动三个独立选项，当前策略带勾
 - 退出
 
 左键单击托盘图标可重新打开设置窗口。

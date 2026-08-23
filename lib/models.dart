@@ -1,16 +1,14 @@
 enum BluetoothAudioMode { a2dp, hfp, automatic, mixed, offline }
 
-BluetoothAudioMode trayToggleTarget(BluetoothAudioMode desiredMode) {
-  // The tray action cycles policies rather than the native configuration.
-  // In automatic mode the native configuration intentionally remains HFP-ready.
-  return switch (desiredMode) {
-    BluetoothAudioMode.a2dp => BluetoothAudioMode.hfp,
-    BluetoothAudioMode.hfp => BluetoothAudioMode.automatic,
-    BluetoothAudioMode.automatic => BluetoothAudioMode.a2dp,
-    BluetoothAudioMode.mixed ||
-    BluetoothAudioMode.offline => BluetoothAudioMode.a2dp,
-  };
-}
+BluetoothAudioMode? trayModeFromMenuKey(String? key) => switch (key) {
+  'mode_a2dp' => BluetoothAudioMode.a2dp,
+  'mode_hfp' => BluetoothAudioMode.hfp,
+  'mode_automatic' => BluetoothAudioMode.automatic,
+  _ => null,
+};
+
+bool isTrayModeSelected(BluetoothAudioMode desiredMode, String menuKey) =>
+    trayModeFromMenuKey(menuKey) == desiredMode;
 
 extension BluetoothAudioModeText on BluetoothAudioMode {
   String get label => switch (this) {
@@ -22,13 +20,6 @@ extension BluetoothAudioModeText on BluetoothAudioMode {
   };
 
   String get wireName => name;
-
-  String get switchActionLabel => switch (this) {
-    BluetoothAudioMode.a2dp => '切换到 A2DP',
-    BluetoothAudioMode.hfp => '切换到 HFP',
-    BluetoothAudioMode.automatic => '切换到自动模式',
-    BluetoothAudioMode.mixed || BluetoothAudioMode.offline => '切换模式',
-  };
 
   static BluetoothAudioMode fromWire(String? value) =>
       BluetoothAudioMode.values.firstWhere(

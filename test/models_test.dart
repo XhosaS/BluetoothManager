@@ -54,16 +54,33 @@ void main() {
     expect(BluetoothAudioStatus.offline.hfpActive, isFalse);
   });
 
-  group('tray toggle target', () {
-    test('cycles desired policies regardless of native configuration', () {
-      expect(trayToggleTarget(BluetoothAudioMode.a2dp), BluetoothAudioMode.hfp);
+  group('tray mode menu', () {
+    test('maps each mode command directly to its policy', () {
+      expect(trayModeFromMenuKey('mode_a2dp'), BluetoothAudioMode.a2dp);
+      expect(trayModeFromMenuKey('mode_hfp'), BluetoothAudioMode.hfp);
       expect(
-        trayToggleTarget(BluetoothAudioMode.hfp),
+        trayModeFromMenuKey('mode_automatic'),
         BluetoothAudioMode.automatic,
       );
+    });
+
+    test('ignores unrelated menu commands', () {
+      expect(trayModeFromMenuKey('exit'), isNull);
+      expect(trayModeFromMenuKey(null), isNull);
+    });
+
+    test('checks only the desired policy, including automatic mode', () {
       expect(
-        trayToggleTarget(BluetoothAudioMode.automatic),
-        BluetoothAudioMode.a2dp,
+        isTrayModeSelected(BluetoothAudioMode.automatic, 'mode_automatic'),
+        isTrue,
+      );
+      expect(
+        isTrayModeSelected(BluetoothAudioMode.automatic, 'mode_a2dp'),
+        isFalse,
+      );
+      expect(
+        isTrayModeSelected(BluetoothAudioMode.automatic, 'mode_hfp'),
+        isFalse,
       );
     });
   });
