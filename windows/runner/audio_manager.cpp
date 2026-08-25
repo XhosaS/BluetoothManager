@@ -359,6 +359,25 @@ std::string WideToUtf8(const std::wstring& value) {
   return result;
 }
 
+bool SameEndpointId(const std::wstring& left, const std::wstring& right) {
+  return !left.empty() && _wcsicmp(left.c_str(), right.c_str()) == 0;
+}
+
+// Windows 11 新蓝牙音频栈通常只暴露一个 Headphones 播放口，
+// 不再单独提供 Hands-Free 扬声器。有 A2DP 播放口和 HFP 话筒时，
+// 用统一播放口兼作 HFP 播放口。
+void ApplyUnifiedRenderIfNeeded(BluetoothAudioDeviceNative& device) {
+  if (device.hfp_render_endpoint_id.empty() &&
+      !device.a2dp_endpoint_id.empty() &&
+      !device.hfp_capture_endpoint_id.empty()) {
+    device.hfp_render_endpoint_id = device.a2dp_endpoint_id;
+  }
+}
+
+bool UsesUnifiedRender(const BluetoothAudioDeviceNative& device) {
+  return SameEndpointId(device.a2dp_endpoint_id, device.hfp_render_endpoint_id);
+}
+
 }  // namespace
 
 std::vector<BluetoothAudioDeviceNative> AudioManager::ListDevices() {
@@ -401,6 +420,7 @@ std::vector<BluetoothAudioDeviceNative> AudioManager::ListDevices() {
           return _wcsicmp(id.c_str(), container.c_str()) == 0;
         });
     if (is_usb_audio) continue;
+    ApplyUnifiedRenderIfNeeded(device);
     if (!device.a2dp_endpoint_id.empty() &&
         !device.hfp_render_endpoint_id.empty() &&
         !device.hfp_capture_endpoint_id.empty() &&
@@ -528,6 +548,7 @@ BluetoothAudioStatusNative AudioManager::SetMode(
     throw std::runtime_error("目标耳机当前未连接，期望模式将在重连后应用。");
   }
 
+  const bool unified_render = UsesUnifiedRender(device);
   if (mode == "a2dp") {
     try {
       SetDefaultEndpoint(device.a2dp_endpoint_id);
@@ -539,16 +560,21 @@ BluetoothAudioStatusNative AudioManager::SetMode(
     } catch (const std::exception& error) {
       throw std::runtime_error(std::string("capture_hide: ") + error.what());
     }
-    try {
-      SetEndpointVisibility(device.hfp_render_endpoint_id, false);
-    } catch (const std::exception& error) {
-      throw std::runtime_error(std::string("hfp_render_hide: ") + error.what());
+    // 统一播放口同时承担 A2DP，切高音质时不能把它隐藏。
+    if (!unified_render) {
+      try {
+        SetEndpointVisibility(device.hfp_render_endpoint_id, false);
+      } catch (const std::exception& error) {
+        throw std::runtime_error(std::string("hfp_render_hide: ") + error.what());
+      }
     }
   } else if (mode == "hfp" || mode == "automatic") {
-    try {
-      SetEndpointVisibility(device.hfp_render_endpoint_id, true);
-    } catch (const std::exception& error) {
-      throw std::runtime_error(std::string("hfp_render_show: ") + error.what());
+    if (!unified_render) {
+      try {
+        SetEndpointVisibility(device.hfp_render_endpoint_id, true);
+      } catch (const std::exception& error) {
+        throw std::runtime_error(std::string("hfp_render_show: ") + error.what());
+      }
     }
     try {
       SetEndpointVisibility(device.hfp_capture_endpoint_id, true);
