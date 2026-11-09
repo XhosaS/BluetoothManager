@@ -240,7 +240,7 @@ class _Sidebar extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '版本 1.0.2',
+                    '版本 1.1.0',
                     style: TextStyle(fontSize: 11, color: palette.textTertiary),
                   ),
                 ),
@@ -496,6 +496,59 @@ class _AudioPage extends StatelessWidget {
   }
 }
 
+class _QuickReconnectButton extends StatelessWidget {
+  const _QuickReconnectButton({
+    required this.controller,
+    required this.showToast,
+  });
+  final AppController controller;
+  final ValueChanged<String> showToast;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled =
+        controller.status.connected &&
+        !controller.applyingMode &&
+        !controller.status.hfpActive;
+    final explanation = controller.reconnecting
+        ? '正在重新建立耳机的音频连接，请稍候。'
+        : controller.status.hfpActive
+        ? '耳机话筒正在使用，请结束通话后重试。'
+        : !controller.status.connected
+        ? '请先连接蓝牙耳机。'
+        : '耳机已连接但没有声音或播放异常时，可尝试快速重连。\n音频会短暂中断，随后恢复当前模式和音量。';
+    return Tooltip(
+      message: explanation,
+      waitDuration: const Duration(milliseconds: 500),
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: OutlinedButton.icon(
+        key: const ValueKey('quick-reconnect'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 34),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          textStyle: const TextStyle(fontSize: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        ),
+        onPressed: !enabled
+            ? null
+            : () async {
+                showToast('正在重新连接耳机…');
+                await controller.reconnect();
+                showToast(controller.error ?? '已重新连接，请播放音频确认');
+              },
+        icon: controller.reconnecting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.refresh_rounded, size: 18),
+        label: Text(controller.reconnecting ? '重连中…' : '快速重连'),
+      ),
+    );
+  }
+}
+
 class _DeviceSurface extends StatelessWidget {
   const _DeviceSurface({required this.controller, required this.showToast});
 
@@ -561,6 +614,8 @@ class _DeviceSurface extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(width: 12),
+        _QuickReconnectButton(controller: controller, showToast: showToast),
       ],
     );
 
@@ -824,13 +879,13 @@ class _StatusStrip extends StatelessWidget {
     if (!status.connected) return '设备离线';
     if (controller.applyingMode) return '正在同步';
     if (controller.desiredMode == BluetoothAudioMode.a2dp) {
-      return status.a2dpIsDefault ? 'A2DP 播放已就绪' : '配置未完成';
+      return status.a2dpIsDefault ? '默认播放设备' : '未设为默认播放';
     }
     if (controller.desiredMode == BluetoothAudioMode.hfp) {
-      return status.hfpCaptureIsDefault ? '通话输入已就绪' : '配置未完成';
+      return status.hfpCaptureIsDefault ? '默认通话输入' : '未设为默认输入';
     }
     return status.a2dpIsDefault && status.hfpCaptureIsDefault
-        ? '播放与话筒已就绪'
+        ? '默认播放与录音设备'
         : '配置未完成';
   }
 
@@ -1230,7 +1285,7 @@ class _AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '版本 1.0.2 · Windows 11 x64',
+                      '版本 1.1.0 · Windows 11 x64',
                       style: TextStyle(
                         color: palette.textTertiary,
                         fontSize: 12,

@@ -97,6 +97,21 @@ class BluetoothAudioPlatform {
     }
   }
 
+  Future<BluetoothAudioStatus> reconnect(
+    String deviceId,
+    BluetoothAudioMode mode,
+  ) async {
+    try {
+      final value = await _channel.invokeMapMethod<Object?, Object?>(
+        'reconnect',
+        <String, Object?>{'deviceId': deviceId, 'mode': mode.wireName},
+      );
+      return BluetoothAudioStatus.fromMap(value ?? const {});
+    } on PlatformException catch (error) {
+      throw BluetoothAudioException(error.code, error.message ?? '未能重新连接耳机');
+    }
+  }
+
   Future<void> setNativeDarkMode(bool enabled) async {
     try {
       await _channel.invokeMethod<void>('setNativeDarkMode', <String, Object?>{
