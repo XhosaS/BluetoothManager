@@ -11,12 +11,14 @@
 
 在蓝牙耳机的 **A2DP 高音质**、**HFP 通话**与**自动模式**之间快速切换。应用按照 Windows `ContainerId` 识别同一台蓝牙设备的播放与话筒端口，并支持系统托盘、深浅主题、登录自启和设备重连恢复。
 
-> 当前版本：**v1.0.2** · 仅支持 Windows 11 x64
+> 当前版本：**v1.1.0** · 仅支持 Windows 11 x64
 
 ## 下载与安装
 
-- [下载安装程序](https://github.com/XhosaS/BluetoothManager/releases/download/v1.0.2/BluetoothAudioManager-Setup-v1.0.2.exe)（推荐）
-- [下载完整 ZIP](https://github.com/XhosaS/BluetoothManager/releases/download/v1.0.2/BluetoothAudioManager-1.0.2-win-x64.zip)
+- 当前分支为 v1.1.0 测试版，包含耳机重连功能；尚未发布安装程序。
+- 已安装上游版本的电脑可以运行本分支的 Release 构建并传入 `--test-build`，测试时不改写原来的开机启动入口。请先从托盘退出旧实例。
+- [下载上游稳定版安装程序](https://github.com/XhosaS/BluetoothManager/releases/download/v1.0.2/BluetoothAudioManager-Setup-v1.0.2.exe)
+- [下载上游稳定版 ZIP](https://github.com/XhosaS/BluetoothManager/releases/download/v1.0.2/BluetoothAudioManager-1.0.2-win-x64.zip)
 - [查看全部版本与更新记录](https://github.com/XhosaS/BluetoothManager/releases)
 
 运行安装程序时需要一次管理员权限，用于复制程序、注册配套 Windows 服务以及创建快捷方式；日常使用不需要重复确认 UAC。ZIP 解压后仍需运行其中的 `install.ps1` 完成安装。
@@ -30,6 +32,10 @@
 ### 浅色主题 · 常规设置
 
 ![蓝牙音频模式切换器浅色设置界面](docs/screenshots/general-settings-light.jpg)
+
+### 重新连接耳机 · 最小窗口
+
+![重新连接耳机操作区](docs/screenshots/reconnect-dark-minimum.jpg)
 
 ## 主要功能
 
@@ -49,6 +55,12 @@ Windows 11 的新蓝牙音频驱动通常使用统一播放端口。选择 HFP �
 3. 选择 A2DP、HFP 或自动模式。
 4. 在“当前状态”中确认配置和端口状态。
 5. 关闭窗口后，应用会继续驻留在任务栏通知区域；单击托盘图标可重新打开。
+
+## 已连接却没有声音
+
+在蓝牙音频页或托盘菜单点击“重新连接耳机”。音频会短暂中断，随后恢复当前模式、音量与静音状态。完成后请播放音频确认；播放器若未继续，请重新点击播放。耳机话筒正在使用时不可重连。
+
+电脑唤醒后会检查音频模式配置，但不会根据静音自动断开耳机。此功能不能保证修复所有耳机或驱动故障。
 
 ## 系统要求
 

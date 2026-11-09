@@ -7,7 +7,11 @@ import 'bluetooth_audio_platform.dart';
 import 'models.dart';
 
 class AppController extends ChangeNotifier {
-  AppController({this.platform = const BluetoothAudioPlatform()});
+  AppController({
+    this.platform = const BluetoothAudioPlatform(),
+    this.registerStartupOnInitialize = true,
+  });
+  final bool registerStartupOnInitialize;
 
   static const _selectedDeviceKey = 'selected_device_id';
   static const _desiredModeKey = 'desired_mode';
@@ -20,6 +24,7 @@ class AppController extends ChangeNotifier {
   StreamSubscription<BluetoothAudioStatus>? _statusSubscription;
   bool _refreshing = false;
   bool _applyingMode = false;
+  bool reconnecting = false;
 
   List<BluetoothAudioDevice> devices = const [];
   BluetoothAudioDevice? selectedDevice;
@@ -58,7 +63,7 @@ class AppController extends ChangeNotifier {
     launchAtStartupEnabled = _preferences!.getBool(_launchAtStartupKey) ?? true;
     darkThemeEnabled = _preferences!.getBool(_darkThemeKey) ?? true;
     await refresh(reapplyDesiredMode: true);
-    if (launchAtStartupEnabled) {
+    if (launchAtStartupEnabled && registerStartupOnInitialize) {
       await _setStartupRegistration(true, reportError: true);
     }
     loading = false;
@@ -72,16 +77,23 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _handleNativeStatus(BluetoothAudioStatus nextStatus) async {
+    if (_applyingMode) return;
     final connectionChanged = status.connected != nextStatus.connected;
     status = nextStatus;
     error = null;
     notifyListeners();
-    if (connectionChanged) {
-      await refresh(reapplyDesiredMode: true);
+    if (connectionChanged || nextStatus.recheckMode) {
+      await refresh(
+        reapplyDesiredMode: true,
+        afterResume: nextStatus.recheckMode,
+      );
     }
   }
 
-  Future<void> refresh({bool reapplyDesiredMode = false}) async {
+  Future<void> refresh({
+    bool reapplyDesiredMode = false,
+    bool afterResume = false,
+  }) async {
     if (_refreshing || _applyingMode) return;
     _refreshing = true;
     try {
@@ -100,7 +112,7 @@ class AppController extends ChangeNotifier {
         status = await platform.getStatus(device.id);
         await platform.watchDevice(device.id);
         if (reapplyDesiredMode &&
-            !previousConnected &&
+            (!previousConnected || afterResume) &&
             device.connected &&
             !status.isCompatibleWith(desiredMode)) {
           _refreshing = false;
@@ -126,6 +138,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> selectDevice(String? id) async {
+    if (_applyingMode) return;
     final device = _findDevice(id);
     if (device == null) return;
     selectedDevice = device;
@@ -165,6 +178,34 @@ class AppController extends ChangeNotifier {
     launchAtStartupEnabled = enabled;
     await _preferences?.setBool(_launchAtStartupKey, enabled);
     await _setStartupRegistration(enabled, reportError: true);
+    notifyListeners();
+  }
+
+  Future<void> reconnect() async {
+    final device = selectedDevice;
+    if (_applyingMode || device == null || !status.connected) return;
+    if (status.hfpActive) {
+      error = '耳机话筒正在使用，请结束通话后重新连接。';
+      notifyListeners();
+      return;
+    }
+    _applyingMode = true;
+    reconnecting = true;
+    error = null;
+    notifyListeners();
+    try {
+      status = await platform.reconnect(device.id, desiredMode);
+    } catch (exception) {
+      error = exception.toString();
+    } finally {
+      reconnecting = false;
+      _applyingMode = false;
+      notifyListeners();
+    }
+    // Refresh on success and failure, retaining the error from the operation.
+    final operationError = error;
+    await refresh();
+    error = operationError ?? error;
     notifyListeners();
   }
 

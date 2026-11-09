@@ -29,11 +29,19 @@ Future<void> main(List<String> arguments) async {
       await windowManager.focus();
     }
   });
-  runApp(const BluetoothAudioManagerApp());
+  runApp(
+    BluetoothAudioManagerApp(
+      registerStartupOnInitialize: !arguments.contains('--test-build'),
+    ),
+  );
 }
 
 class BluetoothAudioManagerApp extends StatefulWidget {
-  const BluetoothAudioManagerApp({super.key});
+  const BluetoothAudioManagerApp({
+    this.registerStartupOnInitialize = true,
+    super.key,
+  });
+  final bool registerStartupOnInitialize;
 
   @override
   State<BluetoothAudioManagerApp> createState() =>
@@ -48,7 +56,9 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
   @override
   void initState() {
     super.initState();
-    controller = AppController()..addListener(_onChanged);
+    controller = AppController(
+      registerStartupOnInitialize: widget.registerStartupOnInitialize,
+    )..addListener(_onChanged);
     trayManager.addListener(this);
     windowManager.addListener(this);
     _initialize();
@@ -109,6 +119,15 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
             disabled: disabled,
           ),
           MenuItem.separator(),
+          MenuItem(
+            key: 'reconnect',
+            label: controller.reconnecting ? '正在重新连接…' : '重新连接耳机',
+            disabled:
+                disabled ||
+                !controller.status.connected ||
+                controller.status.hfpActive,
+          ),
+          MenuItem.separator(),
           MenuItem(key: 'exit', label: '退出'),
         ],
       ),
@@ -132,6 +151,11 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
+    if (menuItem.key == 'reconnect') {
+      _showWindow();
+      controller.reconnect();
+      return;
+    }
     final mode = trayModeFromMenuKey(menuItem.key);
     if (mode != null) {
       controller.setMode(mode);

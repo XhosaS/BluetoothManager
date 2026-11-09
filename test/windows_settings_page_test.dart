@@ -95,7 +95,7 @@ void main() {
     );
 
     final aboutX = tester.getTopLeft(find.text('关于')).dx;
-    final versionX = tester.getTopLeft(find.text('版本 1.0.2')).dx;
+    final versionX = tester.getTopLeft(find.text('版本 1.1.0')).dx;
     expect(versionX, closeTo(aboutX, 0.01));
   });
 

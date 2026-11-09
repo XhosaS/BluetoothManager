@@ -14,6 +14,7 @@ namespace {
 
 constexpr UINT kAudioStatusChangedMessage = WM_APP + 0x42;
 constexpr UINT kAudioModeCompletedMessage = WM_APP + 0x43;
+constexpr UINT_PTR kResumeCheckTimer = 0x4241;
 
 using AudioMethodResult = flutter::MethodResult<flutter::EncodableValue>;
 
@@ -284,7 +285,8 @@ bool FlutterWindow::OnCreate() {
             result->Success();
             return;
           }
-          if (call.method_name() == "setMode") {
+          if (call.method_name() == "setMode" || call.method_name() == "reconnect") {
+            const bool reconnect = call.method_name() == "reconnect";
             const std::string mode = MapString(call.arguments(), "mode");
             if (audio_mode_task_running_.exchange(true)) {
               result->Error("operation_in_progress", "另一项音频策略正在应用。");
@@ -292,7 +294,7 @@ bool FlutterWindow::OnCreate() {
             }
 
             const HWND window = GetHandle();
-            std::thread([window, id, mode, result = std::move(result)]() mutable {
+            std::thread([window, id, mode, reconnect, result = std::move(result)]() mutable {
               auto completed = std::make_unique<AudioModeTaskResult>();
               completed->method_result = std::move(result);
               const HRESULT com_result =
@@ -303,8 +305,9 @@ bool FlutterWindow::OnCreate() {
                       "无法初始化后台音频策略线程。");
                 }
                 AudioManager background_audio_manager;
-                completed->status = background_audio_manager.SetMode(
-                    Utf8ToWide(id), mode);
+                completed->status = reconnect
+                    ? background_audio_manager.Reconnect(Utf8ToWide(id), mode)
+                    : background_audio_manager.SetMode(Utf8ToWide(id), mode);
               } catch (const std::exception& error) {
                 completed->error = error.what();
               }
@@ -395,8 +398,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       try {
         const auto device = audio_manager_->GetDevice(watched_device_id_);
         audio_session_monitor_->Watch(device.hfp_capture_endpoint_id);
-        const auto value = flutter::EncodableValue(
-            EncodeStatus(audio_manager_->GetStatus(watched_device_id_)));
+        auto encoded = EncodeStatus(audio_manager_->GetStatus(watched_device_id_));
+        if (wparam == 1) {
+          encoded[flutter::EncodableValue("recheckMode")] = flutter::EncodableValue(true);
+        }
+        const auto value = flutter::EncodableValue(encoded);
         status_sink_->Success(value);
       } catch (const std::exception& error) {
         status_sink_->Error("windows_audio_error", error.what());
@@ -434,6 +440,19 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_POWERBROADCAST:
+      if (wparam == PBT_APMRESUMEAUTOMATIC || wparam == PBT_APMRESUMESUSPEND) {
+        SetTimer(hwnd, kResumeCheckTimer, 3000, nullptr);
+      }
+      break;
+    case WM_TIMER:
+      if (wparam == kResumeCheckTimer) {
+        if (audio_mode_task_running_) return 0;
+        KillTimer(hwnd, kResumeCheckTimer);
+        PostMessageW(hwnd, kAudioStatusChangedMessage, 1, 0);
+        return 0;
+      }
+      break;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
