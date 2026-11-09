@@ -121,7 +121,7 @@ class _BluetoothAudioManagerAppState extends State<BluetoothAudioManagerApp>
           MenuItem.separator(),
           MenuItem(
             key: 'reconnect',
-            label: controller.reconnecting ? '正在重新连接…' : '重新连接耳机',
+            label: controller.reconnecting ? '重连中…' : '快速重连',
             disabled:
                 disabled ||
                 !controller.status.connected ||

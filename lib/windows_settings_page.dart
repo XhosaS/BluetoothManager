@@ -486,8 +486,6 @@ class _AudioPage extends StatelessWidget {
           ),
           const _SectionTitle('当前状态'),
           _StatusStrip(controller: controller),
-          const SizedBox(height: 14),
-          _ReconnectSurface(controller: controller, showToast: showToast),
           if (controller.error != null) ...<Widget>[
             const SizedBox(height: 14),
             _ErrorBanner(message: controller.error!),
@@ -498,66 +496,54 @@ class _AudioPage extends StatelessWidget {
   }
 }
 
-class _ReconnectSurface extends StatelessWidget {
-  const _ReconnectSurface({required this.controller, required this.showToast});
+class _QuickReconnectButton extends StatelessWidget {
+  const _QuickReconnectButton({
+    required this.controller,
+    required this.showToast,
+  });
   final AppController controller;
   final ValueChanged<String> showToast;
 
   @override
   Widget build(BuildContext context) {
-    final palette = _WinPalette.of(context);
     final enabled =
         controller.status.connected &&
         !controller.applyingMode &&
         !controller.status.hfpActive;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: palette.stroke),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            '已连接却没有声音？',
-            style: TextStyle(
-              color: palette.text,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            controller.status.hfpActive
-                ? '耳机话筒正在使用，请结束通话后重试。'
-                : '尝试重新连接耳机。音频会短暂中断，随后恢复当前模式和音量。',
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: !enabled
-                ? null
-                : () async {
-                    showToast('正在重新连接耳机…');
-                    await controller.reconnect();
-                    showToast(controller.error ?? '已重新连接，请播放音频确认');
-                  },
-            icon: controller.reconnecting
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded, size: 18),
-            label: Text(controller.reconnecting ? '正在重新连接…' : '重新连接耳机'),
-          ),
-        ],
+    final explanation = controller.reconnecting
+        ? '正在重新建立耳机的音频连接，请稍候。'
+        : controller.status.hfpActive
+        ? '耳机话筒正在使用，请结束通话后重试。'
+        : !controller.status.connected
+        ? '请先连接蓝牙耳机。'
+        : '耳机已连接但没有声音或播放异常时，可尝试快速重连。\n音频会短暂中断，随后恢复当前模式和音量。';
+    return Tooltip(
+      message: explanation,
+      waitDuration: const Duration(milliseconds: 500),
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: OutlinedButton.icon(
+        key: const ValueKey('quick-reconnect'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 34),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          textStyle: const TextStyle(fontSize: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        ),
+        onPressed: !enabled
+            ? null
+            : () async {
+                showToast('正在重新连接耳机…');
+                await controller.reconnect();
+                showToast(controller.error ?? '已重新连接，请播放音频确认');
+              },
+        icon: controller.reconnecting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.refresh_rounded, size: 18),
+        label: Text(controller.reconnecting ? '重连中…' : '快速重连'),
       ),
     );
   }
@@ -628,6 +614,8 @@ class _DeviceSurface extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(width: 12),
+        _QuickReconnectButton(controller: controller, showToast: showToast),
       ],
     );
 
