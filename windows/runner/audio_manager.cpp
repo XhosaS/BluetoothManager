@@ -1,6 +1,8 @@
 #include "audio_manager.h"
 
 #include <windows.h>
+#include <bluetoothapis.h>
+#include <endpointvolume.h>
 
 #include <initguid.h>
 #include <cfgmgr32.h>
@@ -613,4 +615,152 @@ BluetoothAudioStatusNative AudioManager::SetMode(
 
   std::this_thread::sleep_for(std::chrono::milliseconds(400));
   return GetStatus(device_id);
+}
+
+BluetoothAudioStatusNative AudioManager::Reconnect(
+    const std::wstring& device_id, const std::string& mode) {
+  if (mode != "a2dp" && mode != "hfp" && mode != "automatic") {
+    throw std::runtime_error("请选择音乐、通话或自动模式后重试。");
+  }
+  const auto device = FindDevice(device_id);
+  if (!device.connected) {
+    throw std::runtime_error("耳机未连接，请先开机并靠近电脑。");
+  }
+  if (GetStatus(device_id).hfp_active) {
+    throw std::runtime_error("耳机话筒正在使用，请结束通话后重新连接。");
+  }
+  // Resolve the physical Bluetooth address by ContainerId, never by its name.
+  constexpr wchar_t enumerator_name[] = L"BTHENUM";
+  ULONG size = 0;
+  if (CM_Get_Device_ID_List_SizeW(&size, enumerator_name,
+        CM_GETIDLIST_FILTER_ENUMERATOR) != CR_SUCCESS || size <= 1) {
+    throw std::runtime_error("无法找到耳机的蓝牙设备。");
+  }
+  std::vector<wchar_t> ids(size);
+  if (CM_Get_Device_ID_ListW(enumerator_name, ids.data(), size,
+        CM_GETIDLIST_FILTER_ENUMERATOR) != CR_SUCCESS) {
+    throw std::runtime_error("无法读取蓝牙设备列表，请重试。");
+  }
+  ULONGLONG address = 0;
+  for (const wchar_t* id = ids.data(); *id; id += wcslen(id) + 1) {
+    constexpr wchar_t prefix[] = L"BTHENUM\\DEV_";
+    if (_wcsnicmp(id, prefix, std::size(prefix) - 1) != 0 ||
+        _wcsicmp(PnpContainerId(id).c_str(), device_id.c_str()) != 0) continue;
+    wchar_t* end = nullptr;
+    const auto candidate = _wcstoui64(id + std::size(prefix) - 1, &end, 16);
+    if (!end || *end != L'\\' || !candidate) continue;
+    if (address && address != candidate) {
+      throw std::runtime_error("耳机标识不唯一，已取消重新连接。");
+    }
+    address = candidate;
+  }
+  if (!address) throw std::runtime_error("无法定位这副耳机，请在 Windows 蓝牙设置中重新连接。");
+
+  BLUETOOTH_DEVICE_SEARCH_PARAMS search{sizeof(search)};
+  search.fReturnAuthenticated = TRUE;
+  search.fReturnRemembered = TRUE;
+  search.fReturnConnected = TRUE;
+  BLUETOOTH_DEVICE_INFO info{sizeof(info)};
+  HBLUETOOTH_DEVICE_FIND found = BluetoothFindFirstDevice(&search, &info);
+  if (!found) throw std::runtime_error("无法读取已配对耳机，请重试。");
+  bool matched = false;
+  do {
+    if (info.Address.ullLong == address) { matched = true; break; }
+  } while (BluetoothFindNextDevice(found, &info));
+  BluetoothFindDeviceClose(found);
+  if (!matched) throw std::runtime_error("这副耳机不在已配对设备中。");
+
+  const GUID audio_sink = {0x0000110b, 0x0000, 0x1000,
+      {0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb}};
+  DWORD service_count = 0;
+  const DWORD query = BluetoothEnumerateInstalledServices(
+      nullptr, &info, &service_count, nullptr);
+  if (query != ERROR_MORE_DATA && query != ERROR_SUCCESS) {
+    throw std::runtime_error("无法检查耳机的音乐服务，请在 Windows 蓝牙设置中重新连接。");
+  }
+  std::vector<GUID> services(service_count);
+  if (service_count == 0 || BluetoothEnumerateInstalledServices(
+      nullptr, &info, &service_count, services.data()) != ERROR_SUCCESS ||
+      !std::any_of(services.begin(), services.end(), [&](const GUID& service) {
+        return IsEqualGUID(service, audio_sink);
+      })) {
+    throw std::runtime_error("耳机的音乐服务尚未启用，请先在 Windows 蓝牙设置中连接。");
+  }
+
+  float volume = 0;
+  BOOL muted = FALSE;
+  bool have_volume = false;
+  ComPtr<IMMDeviceEnumerator> endpoints;
+  ComPtr<IMMDevice> render;
+  ComPtr<IAudioEndpointVolume> level;
+  if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+          CLSCTX_ALL, IID_PPV_ARGS(&endpoints))) &&
+      SUCCEEDED(endpoints->GetDevice(device.a2dp_endpoint_id.c_str(), &render)) &&
+      SUCCEEDED(render->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL,
+          nullptr, reinterpret_cast<void**>(level.GetAddressOf())))) {
+    have_volume = SUCCEEDED(level->GetMasterVolumeLevelScalar(&volume)) &&
+                  SUCCEEDED(level->GetMute(&muted));
+  }
+  level.Reset();
+  render.Reset();
+  if (!have_volume) {
+    throw std::runtime_error("无法读取当前耳机音量，已取消重新连接。请在 Windows 蓝牙设置中重连。");
+  }
+
+  // Cycle only the selected headset's music service. Never reset the radio,
+  // unpair the headset, or touch keyboard/mouse devices. Re-enable even when
+  // disabling fails: the API may have made partial progress before failing.
+  const DWORD disabled = BluetoothSetServiceState(
+      nullptr, &info, &audio_sink, BLUETOOTH_SERVICE_DISABLE);
+  std::this_thread::sleep_for(std::chrono::milliseconds(600));
+  DWORD enabled = ERROR_GEN_FAILURE;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    enabled = BluetoothSetServiceState(
+        nullptr, &info, &audio_sink, BLUETOOTH_SERVICE_ENABLE);
+    if (enabled == ERROR_SUCCESS || enabled == static_cast<DWORD>(E_INVALIDARG)) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+  if (enabled != ERROR_SUCCESS && enabled != static_cast<DWORD>(E_INVALIDARG)) {
+    throw std::runtime_error("耳机音频连接未能恢复，请在 Windows 蓝牙设置中重新连接。错误码：" + std::to_string(enabled));
+  }
+  if (disabled != ERROR_SUCCESS) {
+    throw std::runtime_error("Windows 未允许重新建立音频连接，请在蓝牙设置中断开后重连。错误码：" + std::to_string(disabled));
+  }
+  std::wstring new_render_id;
+  for (int attempt = 0; attempt < 40; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    try {
+      const auto current = FindDevice(device_id);
+      // A different active endpoint in the container is insufficient. Require
+      // the actual music render endpoint to be active after driver re-enumeration.
+      const auto all = EnumerateEndpoints();
+      const bool ready = std::any_of(all.begin(), all.end(), [&](const auto& ep) {
+        return ep.endpoint_id == current.a2dp_endpoint_id && IsActive(ep.state);
+      });
+      if (!ready) continue;
+      new_render_id = current.a2dp_endpoint_id;
+      break;
+    } catch (const std::exception&) {
+      if (attempt == 39) throw;
+    }
+  }
+  if (new_render_id.empty()) {
+    throw std::runtime_error("等待耳机音频连接超时，请确认耳机已开机且未连接到其他设备。");
+  }
+  const auto status = SetMode(device_id, mode);
+  if (have_volume) {
+    if (!endpoints || FAILED(endpoints->GetDevice(new_render_id.c_str(), &render)) ||
+        FAILED(render->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL,
+            nullptr, reinterpret_cast<void**>(level.GetAddressOf()))) ||
+        FAILED(level->SetMasterVolumeLevelScalar(volume, nullptr)) ||
+        FAILED(level->SetMute(muted, nullptr))) {
+      throw std::runtime_error("已重新连接，但音量未能恢复，请检查系统音量。");
+    }
+  }
+  if (!status.connected || !status.a2dp_is_default ||
+      ((mode == "hfp" || mode == "automatic") &&
+       (!status.microphone_enabled || !status.hfp_capture_is_default))) {
+    throw std::runtime_error("耳机已重新连接，但原来的音频模式未能恢复，请重新选择模式。");
+  }
+  return status;
 }

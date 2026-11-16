@@ -41,6 +41,37 @@ void main() {
 
   tearDown(() => controller.dispose());
 
+  testWidgets(
+    'quick reconnect is beside headset and explains its purpose on hover',
+    (tester) async {
+      for (final brightness in [Brightness.dark, Brightness.light]) {
+        await _pumpAtSize(
+          tester,
+          controller: controller,
+          size: const Size(680, 540),
+          brightness: brightness,
+        );
+        final button = find.byKey(const ValueKey('quick-reconnect'));
+        final title = tester.getRect(find.text('蓝牙耳机'));
+        final bounds = tester.getRect(button);
+        expect(bounds.left, greaterThan(title.right));
+        expect(bounds.top, lessThan(title.bottom));
+        expect(bounds.bottom, lessThan(540));
+        expect(find.text('快速重连'), findsOneWidget);
+        expect(find.text('已连接却没有声音？'), findsNothing);
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        await mouse.moveTo(bounds.center);
+        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('耳机已连接但没有声音或播放异常时'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await mouse.removePointer();
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
   testWidgets('audio page has no layout exceptions at supported window sizes', (
     tester,
   ) async {
@@ -95,7 +126,7 @@ void main() {
     );
 
     final aboutX = tester.getTopLeft(find.text('关于')).dx;
-    final versionX = tester.getTopLeft(find.text('版本 1.0.2')).dx;
+    final versionX = tester.getTopLeft(find.text('版本 1.1.0')).dx;
     expect(versionX, closeTo(aboutX, 0.01));
   });
 

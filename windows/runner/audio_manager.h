@@ -32,6 +32,8 @@ class AudioManager {
   BluetoothAudioStatusNative GetStatus(const std::wstring& device_id);
   BluetoothAudioStatusNative SetMode(const std::wstring& device_id,
                                      const std::string& mode);
+  BluetoothAudioStatusNative Reconnect(const std::wstring& device_id,
+                                       const std::string& mode);
 
  private:
   BluetoothAudioDeviceNative FindDevice(const std::wstring& device_id);

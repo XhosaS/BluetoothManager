@@ -70,6 +70,7 @@ class BluetoothAudioStatus {
     required this.a2dpIsDefault,
     required this.hfpRenderIsDefault,
     required this.hfpCaptureIsDefault,
+    this.recheckMode = false,
   });
 
   final BluetoothAudioMode mode;
@@ -79,6 +80,7 @@ class BluetoothAudioStatus {
   final bool a2dpIsDefault;
   final bool hfpRenderIsDefault;
   final bool hfpCaptureIsDefault;
+  final bool recheckMode;
 
   bool isCompatibleWith(
     BluetoothAudioMode desiredMode,
@@ -106,6 +108,7 @@ class BluetoothAudioStatus {
         a2dpIsDefault: map['a2dpIsDefault'] == true,
         hfpRenderIsDefault: map['hfpRenderIsDefault'] == true,
         hfpCaptureIsDefault: map['hfpCaptureIsDefault'] == true,
+        recheckMode: map['recheckMode'] == true,
       );
 
   static const offline = BluetoothAudioStatus(
